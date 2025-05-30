@@ -1,0 +1,29 @@
+name: build-macos
+
+on:
+  push:
+    branches: [ master ]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo build --release
+
+      - name: release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          removeArtifacts: true
+          tag: aarch64-apple-darwin-latest
+          artifacts: target/release/libshared_clipboard_client_generic.a,target/release/libshared_clipboard_client_generic.dylib
+          token: ${{ secrets.GITHUB_TOKEN }}
