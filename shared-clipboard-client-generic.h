@@ -22,7 +22,7 @@ void shared_clipboard_output_drop(shared_clipboard_output_t output);
 
 shared_clipboard_output_t shared_clipboard_poll(void);
 
-shared_clipboard_config_t *shared_clipboard_config_read_from_xdg_cofig_dir(void);
+shared_clipboard_config_t *shared_clipboard_config_read_from_xdg_config_dir(void);
 
 shared_clipboard_config_t *shared_clipboard_config_new(const uint8_t *url,
                                                        const uint8_t *token,

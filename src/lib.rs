@@ -3,7 +3,7 @@
 use crate::thread::Thread;
 pub use crate::{
     config::{
-        Config, shared_clipboard_config_new, shared_clipboard_config_read_from_xdg_cofig_dir,
+        Config, shared_clipboard_config_new, shared_clipboard_config_read_from_xdg_config_dir,
     },
     event::Event,
 };

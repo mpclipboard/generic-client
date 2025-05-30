@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use shared_clipboard_client_generic::{
-    Output, shared_clipboard_config_read_from_xdg_cofig_dir, shared_clipboard_poll,
+    Output, shared_clipboard_config_read_from_xdg_config_dir, shared_clipboard_poll,
     shared_clipboard_send, shared_clipboard_setup, shared_clipboard_start_thread,
     shared_clipboard_stop_thread,
 };
@@ -9,7 +9,7 @@ use std::io::BufRead as _;
 fn main() -> Result<()> {
     shared_clipboard_setup();
 
-    let config = shared_clipboard_config_read_from_xdg_cofig_dir();
+    let config = shared_clipboard_config_read_from_xdg_config_dir();
     if config.is_null() {
         bail!("config is NULL");
     }
