@@ -36,7 +36,6 @@ fn main() -> Result<()> {
         match line {
             Ok(input) => {
                 if input == "exit" {
-                    shared_clipboard_stop_thread();
                     break;
                 }
                 let input = std::ffi::CString::new(input).unwrap();
@@ -48,6 +47,8 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    shared_clipboard_stop_thread();
 
     Ok(())
 }

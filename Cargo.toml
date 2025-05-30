@@ -3,6 +3,9 @@ name = "shared-clipboard-client-generic"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib", "staticlib"]
+
 [dependencies]
 anyhow = { version = "1.0", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive"] }

@@ -22,10 +22,12 @@ mod websocket;
 static mut INCOMING_TX: Option<Sender<Clip>> = None;
 static mut OUTCOMING_RX: Option<Receiver<Event>> = None;
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_setup() {
     pretty_env_logger::init();
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
     let (incoming_tx, incoming_rx) = channel::<Clip>(256);
@@ -38,12 +40,14 @@ pub extern "C" fn shared_clipboard_start_thread(config: *mut Config) {
         OUTCOMING_RX = Some(outcoming_rx);
     }
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_stop_thread() -> bool {
     Thread::stop()
         .inspect_err(|err| log::error!("{err:?}"))
         .is_ok()
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_send(text: *const u8) {
     fn send(text: *const u8) -> Result<()> {
         let text = unsafe { std::ffi::CStr::from_ptr(text.cast()) }
@@ -68,6 +72,7 @@ pub struct Output {
     pub text: *mut u8,
     pub connectivity: *mut bool,
 }
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_output_drop(output: Output) {
     if !output.text.is_null() {
         unsafe { std::ptr::drop_in_place(output.text) };
@@ -77,6 +82,7 @@ pub extern "C" fn shared_clipboard_output_drop(output: Output) {
     }
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_poll() -> Output {
     fn poll() -> Result<Output> {
         let rx = unsafe { OUTCOMING_RX.as_mut() }

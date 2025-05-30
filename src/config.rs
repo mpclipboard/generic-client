@@ -33,6 +33,7 @@ impl Config {
     }
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_config_read_from_xdg_cofig_dir() -> *mut Config {
     let config = match Config::read_from_xdg_config_dir() {
         Ok(config) => config,
@@ -44,6 +45,7 @@ pub extern "C" fn shared_clipboard_config_read_from_xdg_cofig_dir() -> *mut Conf
     Box::leak(Box::new(config))
 }
 
+#[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_config_new(
     url: *const u8,
     token: *const u8,

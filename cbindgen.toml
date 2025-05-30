@@ -1,0 +1,13 @@
+language = "C"
+pragma_once = true
+usize_is_size_t = true
+style = "type"
+no_includes = true
+sys_includes = ["stdint.h", "stdbool.h"]
+
+[enum]
+prefix_with_name = true
+
+[export.rename]
+"Config" = "shared_clipboard_config_t"
+"Output" = "shared_clipboard_output_t"
