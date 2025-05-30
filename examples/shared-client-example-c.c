@@ -10,7 +10,7 @@ void *poll(void* data);
 int main() {
     shared_clipboard_setup();
 
-    shared_clipboard_config_t *config = shared_clipboard_config_read_from_xdg_cofig_dir();
+    shared_clipboard_config_t *config = shared_clipboard_config_read_from_xdg_config_dir();
     if (!config) {
         fprintf(stderr, "config is NULL\n");
         return 1;

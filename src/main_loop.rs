@@ -82,37 +82,6 @@ impl MainLoop {
 
         Ok(())
     }
-
-    // async fn process_clip_from_clipboard(&mut self, clip: Option<Clip>) -> Result<()> {
-    //     let clip = clip.context("channel of incoming messages is closed")?;
-    //     if self.store.add(&clip) {
-    //         log::info!("new clip from local keyboard: {clip:?}");
-    //         self.ws.send(clip).await
-    //     }
-    //     Ok(())
-    // }
-
-    // async fn process_clip_from_ws(&mut self, clip: Result<Clip>) -> Result<()> {
-    //     let clip = clip.context("error during ws communication")?;
-    //     if self.store.add(&clip) {
-    //         log::info!("new clip from ws: {clip:?}");
-    //         self.outcoming_tx
-    //             .send(Event::NewClip(clip))
-    //             .await
-    //             .map_err(|_| anyhow!("failed to send clip to main thread"))?;
-    //     }
-
-    //     Ok(())
-    // }
-
-    // async fn process_connectivity_change(&mut self, connectivity: Option<bool>) -> Result<()> {
-    //     let connectivity = connectivity.context("connectivity channel is closed")?;
-    //     self.outcoming_tx
-    //         .send(Event::ConnectivityChanged(connectivity))
-    //         .await
-    //         .map_err(|_| anyhow!("failed to report connectivity"))?;
-    //     Ok(())
-    // }
 }
 
 fn spawn_ws_task(mut ws: Connection) -> (Sender<Clip>, Receiver<Clip>) {
