@@ -12,16 +12,13 @@ impl Runtime {
         let (stop_tx, stop_rx) = channel::<()>(1);
         unsafe { STOP_TX = Some(stop_tx) };
 
-        let rt = match tokio::runtime::Builder::new_current_thread()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-        {
-            Ok(rt) => rt,
-            Err(err) => {
+            .unwrap_or_else(|err| {
                 log::error!("failed to start tokio runtime: {err:?}");
                 std::process::exit(1);
-            }
-        };
+            });
 
         rt.block_on(async move {
             let main_loop = MainLoop::new(incoming_rx, outcoming_tx, stop_rx, config);

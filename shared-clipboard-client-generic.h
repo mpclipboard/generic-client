@@ -18,8 +18,6 @@ bool shared_clipboard_stop_thread(void);
 
 void shared_clipboard_send(const uint8_t *text);
 
-void shared_clipboard_output_drop(shared_clipboard_output_t output);
-
 shared_clipboard_output_t shared_clipboard_poll(void);
 
 shared_clipboard_config_t *shared_clipboard_config_read_from_xdg_config_dir(void);
