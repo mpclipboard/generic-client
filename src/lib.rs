@@ -24,6 +24,8 @@ mod websocket;
 #[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_setup() {
     pretty_env_logger::init();
+    log::info!("info example");
+    log::error!("error example");
 }
 
 #[unsafe(no_mangle)]
