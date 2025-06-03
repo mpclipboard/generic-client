@@ -1,0 +1,53 @@
+name: x86_64-linux
+
+on:
+  push:
+    branches: [ master ]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  x86_64-unknown-linux-musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - run: sudo apt update
+      - run: sudo apt install musl musl-dev
+
+      - run: cargo build --target x86_64-unknown-linux-musl --release --features rustls-webpki-roots
+
+      - name: release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          removeArtifacts: true
+          tag: x86_64-unknown-linux-musl-latest
+          artifacts: target/x86_64-unknown-linux-musl/release/libshared_clipboard_client_generic.a
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  x86_64-unknown-linux-gnu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo build --release --features rustls-webpki-roots
+
+      - name: release
+        uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          removeArtifacts: true
+          tag: x86_64-unknown-linux-gnu-latest
+          artifacts: target/release/libshared_clipboard_client_generic.so,target/release/libshared_clipboard_client_generic.a
+          token: ${{ secrets.GITHUB_TOKEN }}
