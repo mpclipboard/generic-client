@@ -17,25 +17,43 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            cargo_args: "--target x86_64-unknown-linux-musl --features rustls-webpki-roots"
+            cargo_command: cargo build --release --target x86_64-unknown-linux-musl --features rustls-webpki-roots
             outputs: target/x86_64-unknown-linux-musl/release/libshared_clipboard_client_generic.a
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            cargo_args: "--features rustls-webpki-roots"
+            cargo_command: cargo build --release --features rustls-webpki-roots
             outputs: target/release/libshared_clipboard_client_generic.{so,a}
           - os: macos-latest
             target: aarch64-apple-darwin
-            cargo_args: "--features native-tls"
+            cargo_command: cargo build --release --features native-tls
             outputs: target/release/libshared_clipboard_client_generic.{a,dylib}
+          - os: ubuntu-latest
+            target: aarch64-linux-android
+            cargo_command: cargo ndk -t arm64-v8a -o ./target build --release
+            outputs: target/arm64-v8a/libshared_clipboard_client_generic.so
     steps:
       - uses: actions/checkout@v4
+
+      - name: setup musl
+        run: sudo apt update && sudo apt install musl musl-dev
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
+        if: matrix.target == 'aarch64-linux-android'
+      - uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+        if: matrix.target == 'aarch64-linux-android'
+      - run: echo "ANDROID_NDK_HOME=${{ steps.setup-ndk.outputs.ndk-path }}" >> $GITHUB_ENV
+        if: matrix.target == 'aarch64-linux-android'
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: setup musl
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt update && sudo apt install musl musl-dev
-      - run: cargo build --release ${{ matrix.cargo_args }}
+      - run: ${{ matrix.cargo_command }}
 
       - run: mkdir -p artifacts/shared-clipboard-generic-client
       - run: cp ${{ matrix.outputs }} artifacts/shared-clipboard-generic-client
@@ -48,7 +66,7 @@ jobs:
           if-no-files-found: error
 
   create-release:
-    needs: [build]
+    needs: [ build ]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
