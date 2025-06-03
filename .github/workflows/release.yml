@@ -9,76 +9,55 @@ defaults:
     shell: bash
 
 jobs:
-  x86_64-unknown-linux-musl:
-    runs-on: ubuntu-latest
+  build:
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.target }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            cargo_args: "--target x86_64-unknown-linux-musl --features rustls-webpki-roots"
+            outputs: target/x86_64-unknown-linux-musl/release/libshared_clipboard_client_generic.a
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            cargo_args: "--features rustls-webpki-roots"
+            outputs: target/release/libshared_clipboard_client_generic.{so,a}
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            cargo_args: "--features native-tls"
+            outputs: target/release/libshared_clipboard_client_generic.{a,dylib}
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: ${{ matrix.target }}
+      - name: setup musl
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt update && sudo apt install musl musl-dev
+      - run: cargo build --release ${{ matrix.cargo_args }}
 
-      - run: sudo apt update
-      - run: sudo apt install musl musl-dev
-
-      - run: cargo build --target x86_64-unknown-linux-musl --release --features rustls-webpki-roots
-
-      - run: cp target/x86_64-unknown-linux-musl/release/libshared_clipboard_client_generic.a .
-      - run: tar czvf x86_64-unknown-linux-musl.tar.gz libshared_clipboard_client_generic.a
+      - run: mkdir -p artifacts/shared-clipboard-generic-client
+      - run: cp ${{ matrix.outputs }} artifacts/shared-clipboard-generic-client
+      - run: cd artifacts && tar czvf ${{ matrix.target }}.tar.gz shared-clipboard-generic-client
 
       - uses: actions/upload-artifact@v4
         with:
-          name: x86_64-unknown-linux-musl
-          path: x86_64-unknown-linux-musl.tar.gz
-
-  x86_64-unknown-linux-gnu:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - run: cargo build --release --features rustls-webpki-roots
-
-      - run: cp target/release/libshared_clipboard_client_generic.{so,a} .
-      - run: tar czvf x86_64-unknown-linux-gnu.tar.gz libshared_clipboard_client_generic.{a,so}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: x86_64-unknown-linux-gnu
-          path: x86_64-unknown-linux-gnu.tar.gz
-
-  aarch64-apple-darwin:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - run: cargo build --release --features native-tls
-
-      - run: cp target/release/libshared_clipboard_client_generic.{a,dylib} .
-      - run: tar czvf aarch64-apple-darwin.tar.gz libshared_clipboard_client_generic.{a,dylib}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: aarch64-apple-darwin
-          path: aarch64-apple-darwin.tar.gz
+          name: ${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}.tar.gz
+          if-no-files-found: error
 
   create-release:
-    needs: [x86_64-unknown-linux-musl, x86_64-unknown-linux-gnu, aarch64-apple-darwin]
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
-        with: { name: x86_64-unknown-linux-musl }
-      - uses: actions/download-artifact@v4
-        with: { name: x86_64-unknown-linux-gnu }
-      - uses: actions/download-artifact@v4
-        with: { name: aarch64-apple-darwin }
+        with:
+          path: artifacts
 
-      - run: ls -l
+      - run: find artifacts
 
       - name: release
         uses: ncipollo/release-action@v1
@@ -87,5 +66,5 @@ jobs:
           artifactErrorsFailBuild: true
           removeArtifacts: true
           tag: latest
-          artifacts: "*.tar.gz,shared-clipboard-client-generic.h"
+          artifacts: "artifacts/**/*.tar.gz,shared-clipboard-client-generic.h"
           token: ${{ secrets.GITHUB_TOKEN }}
