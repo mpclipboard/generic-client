@@ -45,10 +45,19 @@ pub extern "C" fn shared_clipboard_setup() {
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_setup_rustls_on_jvm(
-    env: &mut jni::JNIEnv,
-    context: jni::objects::JObject,
+    env: *mut jni::sys::JNIEnv,
+    context: jni::sys::jobject,
 ) {
-    if let Err(err) = rustls_platform_verifier::android::init_hosted(env, context) {
+    let mut env = match unsafe { jni::JNIEnv::from_raw(env) } {
+        Ok(env) => env,
+        Err(err) => {
+            log::error!("JNIEnv::from_raw failed: {:?}", err);
+            return;
+        }
+    };
+    let context = unsafe { jni::objects::JObject::from_raw(context) };
+
+    if let Err(err) = rustls_platform_verifier::android::init_hosted(&mut env, context) {
         log::error!("Failed to instantiate rustls_platform_verifier: {err:?}");
     }
 }
