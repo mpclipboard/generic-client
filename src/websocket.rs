@@ -49,9 +49,10 @@ fn ssl_connector() -> Result<Connector> {
     )))
 }
 
-#[cfg(feature = "rustls-webpki-roots")]
+#[cfg(feature = "rustls-platform-verifier")]
 fn ssl_connector() -> Result<Connector> {
     use rustls::ClientConfig;
+    use rustls_platform_verifier::ConfigVerifierExt;
     use std::sync::Arc;
     use tokio_rustls::TlsConnector;
 
@@ -59,20 +60,16 @@ fn ssl_connector() -> Result<Connector> {
         .install_default()
         .expect("Failed to install rustls crypto provider");
 
-    let root_store = rustls::RootCertStore {
-        roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-    };
-    let config = ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
+    let config = ClientConfig::with_platform_verifier()
+        .context("failed to create SSL client with platform verifier")?;
     let connector = TlsConnector::from(Arc::new(config));
 
     Ok(Connector::Rustls(connector))
 }
 
-#[cfg(all(not(feature = "native-tls"), not(feature = "rustls-webpki-roots")))]
+#[cfg(all(not(feature = "native-tls"), not(feature = "rustls-platform-verifier")))]
 fn ssl_connector() -> Result<Connector> {
     anyhow::bail!(
-        "either native-tls or rustls-webpki-roots feature must be enabled to run with SSL connector"
+        "either native-tls or rustls-platform-verifier feature must be enabled to run with SSL connector"
     )
 }

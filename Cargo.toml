@@ -9,9 +9,9 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 [features]
 default = []
 native-tls = ["tokio-websockets/native-tls", "dep:tokio-native-tls"]
-rustls-webpki-roots = [
+rustls-platform-verifier = [
     "tokio-websockets/rustls-webpki-roots",
-    "dep:webpki-roots",
+    "dep:rustls-platform-verifier",
     "dep:rustls",
     "dep:tokio-rustls",
 ]
@@ -44,8 +44,8 @@ tokio-websockets = { version = "0.11", features = [
 # native-tls
 tokio-native-tls = { version = "0.3", default-features = false, optional = true }
 
-# rustls-webpki-roots
-webpki-roots = { version = "1.0.0", optional = true }
+# rustls-platform-verifier
+rustls-platform-verifier = { version = "0.6", optional = true }
 rustls = { version = "0.23.27", features = ["ring"], optional = true }
 tokio-rustls = { version = "0.26.2", optional = true }
 
