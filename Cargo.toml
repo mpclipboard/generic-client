@@ -51,6 +51,7 @@ tokio-rustls = { version = "0.26.2", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
+jni = { version = "0.21", default-features = false }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 pretty_env_logger = { version = "0.5", default-features = false }

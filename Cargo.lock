@@ -970,6 +970,7 @@ dependencies = [
  "anyhow",
  "futures-util",
  "http",
+ "jni",
  "log",
  "pretty_env_logger",
  "rustls",

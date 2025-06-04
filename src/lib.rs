@@ -42,6 +42,17 @@ pub extern "C" fn shared_clipboard_setup() {
     log::error!("error example");
 }
 
+#[cfg(target_os = "android")]
+#[unsafe(no_mangle)]
+pub extern "C" fn shared_clipboard_setup_rustls_on_jvm(
+    env: &mut jni::JNIEnv,
+    context: jni::objects::JObject,
+) {
+    if let Err(err) = rustls_platform_verifier::android::init_hosted(env, context) {
+        log::error!("Failed to instantiate rustls_platform_verifier: {err:?}");
+    }
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn shared_clipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
