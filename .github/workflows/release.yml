@@ -65,8 +65,23 @@ jobs:
           path: artifacts/${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
+  build-rustls-platform-verifier-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo check
+      - run: ./scripts/pack-rustls-platform-verifier-android.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustls-platform-verifier-android
+          path: artifacts/rustls-platform-verifier-android.tar.gz
+          if-no-files-found: error
+
   create-release:
-    needs: [ build ]
+    needs:
+      - build
+      - build-rustls-platform-verifier-android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
