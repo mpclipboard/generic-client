@@ -1,6 +1,6 @@
 use crate::{Config, connection::Connection, event::Event};
 use anyhow::{Context, Result, anyhow};
-use shared_clipboard_common::{Clip, Store};
+use mpclipboard_common::{Clip, Store};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 pub(crate) struct MainLoop {

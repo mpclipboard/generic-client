@@ -1,6 +1,6 @@
 use crate::{config::Config, websocket::Websocket};
 use anyhow::{Context as _, Result, bail};
-use shared_clipboard_common::{AuthRequest, AuthResponse, Clip};
+use mpclipboard_common::{AuthRequest, AuthResponse, Clip};
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_websockets::Message;

@@ -1,4 +1,4 @@
-#include "shared-clipboard-client-generic.h"
+#include "mpclipboard-generic-client.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -8,15 +8,15 @@
 void *poll(void* data);
 
 int main() {
-    shared_clipboard_setup();
+    mpclipboard_setup();
 
-    shared_clipboard_config_t *config = shared_clipboard_config_read_from_xdg_config_dir();
+    mpclipboard_config_t *config = mpclipboard_config_read_from_xdg_config_dir();
     if (!config) {
         fprintf(stderr, "config is NULL\n");
         return 1;
     }
 
-    shared_clipboard_start_thread(config);
+    mpclipboard_start_thread(config);
 
     pthread_t thread;
     pthread_create(&thread, NULL, poll, NULL);
@@ -28,17 +28,17 @@ int main() {
         if (strcmp(line, "exit\n") == 0) {
             break;
         }
-        shared_clipboard_send(line);
+        mpclipboard_send(line);
     }
 
-    shared_clipboard_stop_thread();
+    mpclipboard_stop_thread();
 
     return 0;
 }
 
 void *poll(void* data) {
     while (true) {
-        shared_clipboard_output_t output = shared_clipboard_poll();
+        mpclipboard_output_t output = mpclipboard_poll();
         if (output.text) {
             printf("text = %s\n", output.text);
             free(output.text);

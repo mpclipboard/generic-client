@@ -1,6 +1,6 @@
 use crate::{Config, event::Event, main_loop::MainLoop};
 use anyhow::{Context as _, Result, anyhow};
-use shared_clipboard_common::Clip;
+use mpclipboard_common::Clip;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 pub(crate) struct Runtime;

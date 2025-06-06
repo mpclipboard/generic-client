@@ -1,5 +1,5 @@
 [package]
-name = "shared-clipboard-client-generic"
+name = "mpclipboard-generic-client"
 version = "0.1.0"
 edition = "2024"
 
@@ -23,7 +23,7 @@ toml = { version = "0.8", default-features = false, features = ["parse"] }
 
 log = { version = "0.4", default-features = false }
 
-shared-clipboard-common = { git = "https://github.com/iliabylich/shared-clipboard-common.git" }
+mpclipboard-common = { git = "https://github.com/mpclipboard/common.git" }
 
 http = { version = "1.3", default-features = false }
 tokio = { version = "1", default-features = false, features = [

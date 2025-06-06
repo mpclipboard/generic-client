@@ -1,6 +1,6 @@
 use crate::{Config, event::Event, runtime::Runtime};
 use anyhow::{Context as _, Result, anyhow};
-use shared_clipboard_common::Clip;
+use mpclipboard_common::Clip;
 use std::{sync::Mutex, thread::JoinHandle};
 use tokio::sync::mpsc::{Receiver, Sender};
 

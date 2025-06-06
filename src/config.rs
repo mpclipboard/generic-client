@@ -21,7 +21,7 @@ impl std::fmt::Debug for Config {
 impl Config {
     pub fn read_from_xdg_config_dir() -> Result<Self> {
         let home = std::env::var("HOME").context("no $HOME")?;
-        let path = format!("{home}/.config/shared-clipboard/config.toml");
+        let path = format!("{home}/.config/mpclipboard/config.toml");
         let content =
             std::fs::read_to_string(&path).with_context(|| format!("failed to read {path}"))?;
         let config = toml::from_str(&content).context("invalid config format")?;
@@ -34,7 +34,7 @@ impl Config {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_config_read_from_xdg_config_dir() -> *mut Config {
+pub extern "C" fn mpclipboard_config_read_from_xdg_config_dir() -> *mut Config {
     let config = match Config::read_from_xdg_config_dir() {
         Ok(config) => config,
         Err(err) => {
@@ -46,7 +46,7 @@ pub extern "C" fn shared_clipboard_config_read_from_xdg_config_dir() -> *mut Con
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_config_new(
+pub extern "C" fn mpclipboard_config_new(
     url: *const u8,
     token: *const u8,
     name: *const u8,

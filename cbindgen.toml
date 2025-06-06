@@ -9,8 +9,8 @@ sys_includes = ["stdint.h", "stdbool.h"]
 prefix_with_name = true
 
 [export.rename]
-"Config" = "shared_clipboard_config_t"
-"Output" = "shared_clipboard_output_t"
+"Config" = "mpclipboard_config_t"
+"Output" = "mpclipboard_output_t"
 
 [export]
-exclude = ["shared_clipboard_setup_rustls_on_jvm"]
+exclude = ["mpclipboard_setup_rustls_on_jvm"]

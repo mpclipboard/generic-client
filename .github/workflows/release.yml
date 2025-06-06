@@ -18,19 +18,19 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             cargo_command: cargo build --release --target x86_64-unknown-linux-musl --features rustls-platform-verifier
-            outputs: target/x86_64-unknown-linux-musl/release/libshared_clipboard_client_generic.a
+            outputs: target/x86_64-unknown-linux-musl/release/libmpclipboard_generic_client.a
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             cargo_command: cargo build --release --features rustls-platform-verifier
-            outputs: target/release/libshared_clipboard_client_generic.{so,a}
+            outputs: target/release/libmpclipboard_generic_client.a
           - os: macos-latest
             target: aarch64-apple-darwin
-            cargo_command: cargo build --release --features native-tls
-            outputs: target/release/libshared_clipboard_client_generic.{a,dylib}
+            cargo_command: cargo build --release --features rustls-platform-verifier
+            outputs: target/release/libmpclipboard_generic_client.a
           - os: ubuntu-latest
             target: aarch64-linux-android
             cargo_command: cargo ndk -t arm64-v8a -o ./target build --release --features rustls-platform-verifier
-            outputs: target/arm64-v8a/libshared_clipboard_client_generic.so target/aarch64-linux-android/release/libshared_clipboard_client_generic.a
+            outputs: target/aarch64-linux-android/release/libmpclipboard_generic_client.a
     steps:
       - uses: actions/checkout@v4
 
@@ -55,9 +55,9 @@ jobs:
           targets: ${{ matrix.target }}
       - run: ${{ matrix.cargo_command }}
 
-      - run: mkdir -p artifacts/shared-clipboard-generic-client
-      - run: cp ${{ matrix.outputs }} artifacts/shared-clipboard-generic-client
-      - run: cd artifacts && tar czvf ${{ matrix.target }}.tar.gz shared-clipboard-generic-client
+      - run: mkdir -p artifacts/mpclipboard-generic-client
+      - run: cp ${{ matrix.outputs }} artifacts/mpclipboard-generic-client
+      - run: cd artifacts && tar czvf ${{ matrix.target }}.tar.gz mpclipboard-generic-client
 
       - uses: actions/upload-artifact@v4
         with:
@@ -65,23 +65,9 @@ jobs:
           path: artifacts/${{ matrix.target }}.tar.gz
           if-no-files-found: error
 
-  build-rustls-platform-verifier-android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check
-      - run: ./scripts/pack-rustls-platform-verifier-android.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: rustls-platform-verifier-android
-          path: artifacts/rustls-platform-verifier-android.tar.gz
-          if-no-files-found: error
-
   create-release:
     needs:
       - build
-      - build-rustls-platform-verifier-android
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,5 +85,5 @@ jobs:
           artifactErrorsFailBuild: true
           removeArtifacts: true
           tag: latest
-          artifacts: "artifacts/**/*.tar.gz,shared-clipboard-client-generic.h"
+          artifacts: "artifacts/**/*.tar.gz,mpclipboard-generic-client.h"
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,14 +1,12 @@
 #![allow(static_mut_refs)]
 
 pub use crate::{
-    config::{
-        Config, shared_clipboard_config_new, shared_clipboard_config_read_from_xdg_config_dir,
-    },
+    config::{Config, mpclipboard_config_new, mpclipboard_config_read_from_xdg_config_dir},
     event::Event,
 };
 use crate::{incoming_tx::IncomingTx, outcoming_rx::OutcomingRx, thread::Thread};
 use anyhow::{Context, Result};
-use shared_clipboard_common::Clip;
+use mpclipboard_common::Clip;
 use tokio::sync::mpsc::channel;
 
 mod config;
@@ -22,7 +20,7 @@ mod thread;
 mod websocket;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_setup() {
+pub extern "C" fn mpclipboard_setup() {
     #[cfg(target_os = "android")]
     {
         use android_logger::Config;
@@ -44,7 +42,7 @@ pub extern "C" fn shared_clipboard_setup() {
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_setup_rustls_on_jvm(
+pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
     env: *mut jni::sys::JNIEnv,
     context: jni::sys::jobject,
 ) {
@@ -63,7 +61,7 @@ pub extern "C" fn shared_clipboard_setup_rustls_on_jvm(
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_start_thread(config: *mut Config) {
+pub extern "C" fn mpclipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
     let (incoming_tx, incoming_rx) = channel::<Clip>(256);
     let (outcoming_tx, outcoming_rx) = channel::<Event>(256);
@@ -74,18 +72,18 @@ pub extern "C" fn shared_clipboard_start_thread(config: *mut Config) {
     OutcomingRx::set(outcoming_rx);
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_stop_thread() -> bool {
+pub extern "C" fn mpclipboard_stop_thread() -> bool {
     Thread::stop()
         .inspect_err(|err| log::error!("{err:?}"))
         .is_ok()
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_send(text: *const u8) {
+pub extern "C" fn mpclipboard_send(text: *const u8) {
     fn send(text: *const u8) -> Result<()> {
         let text = unsafe { std::ffi::CStr::from_ptr(text.cast()) }
             .to_str()
-            .context("text passed to shared_clipboard_clip_new must be NULL-terminated")?;
+            .context("text passed to mpclipboard_clip_new must be NULL-terminated")?;
         let clip = Clip::new(text);
         IncomingTx::blocking_send(clip)?;
         Ok(())
@@ -103,7 +101,7 @@ pub struct Output {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn shared_clipboard_poll() -> Output {
+pub extern "C" fn mpclipboard_poll() -> Output {
     fn poll() -> Result<Output> {
         let (clip, connectivity) = OutcomingRx::recv_squashed()?;
 

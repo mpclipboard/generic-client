@@ -557,6 +557,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpclipboard-common"
+version = "0.1.0"
+source = "git+https://github.com/mpclipboard/common.git#63289855875de558eba81fb7ea300cce40f8efc8"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tokio-websockets",
+]
+
+[[package]]
+name = "mpclipboard-generic-client"
+version = "0.1.0"
+dependencies = [
+ "android_logger",
+ "anyhow",
+ "futures-util",
+ "http",
+ "jni",
+ "log",
+ "mpclipboard-common",
+ "pretty_env_logger",
+ "rustls",
+ "rustls-platform-verifier",
+ "serde",
+ "tokio",
+ "tokio-native-tls",
+ "tokio-rustls",
+ "tokio-websockets",
+ "toml",
+]
+
+[[package]]
 name = "native-tls"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -960,39 +993,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87607cb1398ed59d48732e575a4c28a7a8ebf2454b964fe3f224f2afc07909e1"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "shared-clipboard-client-generic"
-version = "0.1.0"
-dependencies = [
- "android_logger",
- "anyhow",
- "futures-util",
- "http",
- "jni",
- "log",
- "pretty_env_logger",
- "rustls",
- "rustls-platform-verifier",
- "serde",
- "shared-clipboard-common",
- "tokio",
- "tokio-native-tls",
- "tokio-rustls",
- "tokio-websockets",
- "toml",
-]
-
-[[package]]
-name = "shared-clipboard-common"
-version = "0.1.0"
-source = "git+https://github.com/iliabylich/shared-clipboard-common.git#001a1a5b2bce98bfe91dcb25bc565d580a8b5fca"
-dependencies = [
- "anyhow",
- "serde",
- "serde_json",
- "tokio-websockets",
 ]
 
 [[package]]
