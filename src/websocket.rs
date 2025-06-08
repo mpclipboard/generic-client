@@ -1,6 +1,10 @@
 use anyhow::{Context as _, Result};
 use futures_util::{SinkExt as _, StreamExt as _};
+use rustls::ClientConfig;
+use rustls_platform_verifier::ConfigVerifierExt;
+use std::sync::Arc;
 use tokio::net::TcpStream;
+use tokio_rustls::TlsConnector;
 use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, Message, WebSocketStream};
 
 pub(crate) struct Websocket {
@@ -8,23 +12,15 @@ pub(crate) struct Websocket {
 }
 
 impl Websocket {
-    pub(crate) async fn new(url: impl AsRef<str>) -> Result<Self> {
-        let uri = http::Uri::try_from(url.as_ref()).context("invalid url")?;
+    pub(crate) async fn new(url: &str) -> Result<Self> {
+        let uri = http::Uri::try_from(url).context("invalid url")?;
         let is_wss = uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
+        let connector = build_connector(is_wss)?;
 
-        let mut builder = ClientBuilder::from_uri(uri);
-
-        let connector = if is_wss {
-            log::info!("wss protocol detected, enabling TLS");
-            ssl_connector()?
-        } else {
-            log::info!("plain ws protocol detected, disabling TLS");
-            Connector::Plain
-        };
-
-        builder = builder.connector(&connector);
-
-        let (ws, response) = builder.connect().await?;
+        let (ws, response) = ClientBuilder::from_uri(uri)
+            .connector(&connector)
+            .connect()
+            .await?;
         log::info!("WS(S) connect response: {response:?}");
 
         Ok(Self { ws })
@@ -41,35 +37,21 @@ impl Websocket {
     }
 }
 
-#[cfg(feature = "native-tls")]
-fn ssl_connector() -> Result<Connector> {
-    Ok(Connector::NativeTls(tokio_native_tls::TlsConnector::from(
-        tokio_native_tls::native_tls::TlsConnector::new()
-            .context("failed to create native TLS connector")?,
-    )))
-}
+fn build_connector(ssl: bool) -> Result<Connector> {
+    if ssl {
+        log::info!("wss protocol detected, enabling TLS");
 
-#[cfg(feature = "rustls-platform-verifier")]
-fn ssl_connector() -> Result<Connector> {
-    use rustls::ClientConfig;
-    use rustls_platform_verifier::ConfigVerifierExt;
-    use std::sync::Arc;
-    use tokio_rustls::TlsConnector;
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
 
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Failed to install rustls crypto provider");
+        let config = ClientConfig::with_platform_verifier()
+            .context("failed to create SSL client with platform verifier")?;
+        let connector = TlsConnector::from(Arc::new(config));
 
-    let config = ClientConfig::with_platform_verifier()
-        .context("failed to create SSL client with platform verifier")?;
-    let connector = TlsConnector::from(Arc::new(config));
-
-    Ok(Connector::Rustls(connector))
-}
-
-#[cfg(all(not(feature = "native-tls"), not(feature = "rustls-platform-verifier")))]
-fn ssl_connector() -> Result<Connector> {
-    anyhow::bail!(
-        "either native-tls or rustls-platform-verifier feature must be enabled to run with SSL connector"
-    )
+        Ok(Connector::Rustls(connector))
+    } else {
+        log::info!("plain ws protocol detected, disabling TLS");
+        Ok(Connector::Plain)
+    }
 }
