@@ -1,4 +1,4 @@
-use crate::{config::Config, websocket::Websocket};
+use crate::{config::Config, websocket::with_ssl::WebsocketWithSsl};
 use anyhow::{Context as _, Result, bail};
 use mpclipboard_common::{AuthRequest, AuthResponse, Clip};
 use std::time::Duration;
@@ -7,7 +7,7 @@ use tokio_websockets::Message;
 
 pub struct Connection {
     config: Config,
-    ws: Option<Websocket>,
+    ws: Option<WebsocketWithSsl>,
     connectivity_tx: Sender<bool>,
 }
 
@@ -23,7 +23,7 @@ impl Connection {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        let mut ws = Websocket::new(&self.config.url).await?;
+        let mut ws = WebsocketWithSsl::new(&self.config.url).await?;
         authenticate(&mut ws, &self.config).await?;
         self.ws = Some(ws);
         self.connectivity_tx
@@ -76,7 +76,7 @@ impl Connection {
                 }
             };
 
-            match Clip::try_from(message) {
+            match Clip::try_from(&message) {
                 Ok(clip) => return Ok(clip),
                 Err(err) => {
                     log::error!("communication error: {err:?}");
@@ -89,16 +89,16 @@ impl Connection {
 
     pub(crate) async fn send(&mut self, clip: Clip) {
         if let Some(ws) = self.ws.as_mut() {
-            ws.send(Message::from(clip)).await
+            ws.send(Message::from(&clip)).await
         } else {
             log::error!("failed to send message to ws server (not connected)")
         }
     }
 }
 
-pub(crate) async fn authenticate(ws: &mut Websocket, config: &Config) -> Result<()> {
+pub(crate) async fn authenticate(ws: &mut WebsocketWithSsl, config: &Config) -> Result<()> {
     log::info!("Authenticating as {:?}", config.name);
-    let message = Message::from(AuthRequest::new(&config.name, &config.token));
+    let message = Message::from(&AuthRequest::new(&config.name, &config.token));
     ws.send(message).await;
     log::info!("Authentication message sent, waiting for reply...");
 
@@ -107,7 +107,7 @@ pub(crate) async fn authenticate(ws: &mut Websocket, config: &Config) -> Result<
         .await
         .context("closed stream, no auth response")?
         .context("websocket error, no auth response")?;
-    let auth = AuthResponse::try_from(message)?;
+    let auth = AuthResponse::try_from(&message)?;
     log::info!("Got authentication response: {}", auth.success);
 
     if auth.success {
