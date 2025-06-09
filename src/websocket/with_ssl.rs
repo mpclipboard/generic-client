@@ -1,9 +1,10 @@
 use anyhow::{Context as _, Result};
 use futures_util::{SinkExt as _, Stream, StreamExt as _};
+use http::{HeaderName, HeaderValue};
 use pin_project_lite::pin_project;
 use rustls::ClientConfig;
 use rustls_platform_verifier::ConfigVerifierExt;
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, Message, WebSocketStream};
@@ -16,15 +17,26 @@ pin_project! {
 }
 
 impl WebsocketWithSsl {
-    pub(crate) async fn new(url: &str) -> Result<Self> {
+    pub(crate) async fn new(url: &str, token: &str, name: &str) -> Result<Self> {
         let uri = http::Uri::try_from(url).context("invalid url")?;
         let is_wss = uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
         let connector = build_connector(is_wss)?;
 
         let (ws, response) = ClientBuilder::from_uri(uri)
             .connector(&connector)
+            .add_header(
+                HeaderName::from_str("Token").expect("failed to create Token header, bug?"),
+                HeaderValue::from_str(token).context("token can't be used as an HTTP header")?,
+            )
+            .context("failed to add Token header to the WebSocket stream")?
+            .add_header(
+                HeaderName::from_str("Name").expect("failed to create Device header, bug?"),
+                HeaderValue::from_str(name).context("name can't be used as an HTTP header")?,
+            )
+            .context("failed to add name header to the WebSocket stream")?
             .connect()
             .await?;
+
         log::info!("WS(S) connect response: {response:?}");
 
         Ok(Self { ws })

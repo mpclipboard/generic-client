@@ -1,6 +1,6 @@
 use crate::{config::Config, websocket::with_ssl::WebsocketWithSsl};
-use anyhow::{Context as _, Result, bail};
-use mpclipboard_common::{AuthRequest, AuthResponse, Clip};
+use anyhow::{Context as _, Result};
+use mpclipboard_common::Clip;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio_websockets::Message;
@@ -23,8 +23,8 @@ impl Connection {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        let mut ws = WebsocketWithSsl::new(&self.config.url).await?;
-        authenticate(&mut ws, &self.config).await?;
+        let ws =
+            WebsocketWithSsl::new(&self.config.url, &self.config.token, &self.config.name).await?;
         self.ws = Some(ws);
         self.connectivity_tx
             .send(true)
@@ -93,26 +93,5 @@ impl Connection {
         } else {
             log::error!("failed to send message to ws server (not connected)")
         }
-    }
-}
-
-pub(crate) async fn authenticate(ws: &mut WebsocketWithSsl, config: &Config) -> Result<()> {
-    log::info!("Authenticating as {:?}", config.name);
-    let message = Message::from(&AuthRequest::new(&config.name, &config.token));
-    ws.send(message).await;
-    log::info!("Authentication message sent, waiting for reply...");
-
-    let message = ws
-        .next()
-        .await
-        .context("closed stream, no auth response")?
-        .context("websocket error, no auth response")?;
-    let auth = AuthResponse::try_from(&message)?;
-    log::info!("Got authentication response: {}", auth.success);
-
-    if auth.success {
-        Ok(())
-    } else {
-        bail!("auth failed")
     }
 }

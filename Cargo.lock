@@ -528,7 +528,7 @@ dependencies = [
 [[package]]
 name = "mpclipboard-common"
 version = "0.1.0"
-source = "git+https://github.com/mpclipboard/common.git#a57b5a21c8757ae082171442ee7a5288cc3fe82b"
+source = "git+https://github.com/mpclipboard/common.git#015894d452f8be33e722cee3b077df016dcb5f2c"
 dependencies = [
  "anyhow",
  "serde",
