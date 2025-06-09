@@ -8,7 +8,11 @@ pub(crate) struct Thread;
 static THREAD: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
 
 impl Thread {
-    pub(crate) fn start(incoming_rx: Receiver<Clip>, outcoming_tx: Sender<Event>, config: Config) {
+    pub(crate) fn start(
+        incoming_rx: Receiver<Clip>,
+        outcoming_tx: Sender<Event>,
+        config: &'static Config,
+    ) {
         let handle = std::thread::spawn(move || {
             Runtime::start(incoming_rx, outcoming_tx, config);
         });

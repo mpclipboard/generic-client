@@ -1,5 +1,10 @@
-use crate::{Config, connection::Connection, event::Event};
+use crate::{
+    Config,
+    event::Event,
+    websocket::{WebSocket, WebSocketEvent},
+};
 use anyhow::{Context, Result, anyhow};
+use futures_util::StreamExt as _;
 use mpclipboard_common::{Clip, Store};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
@@ -8,7 +13,7 @@ pub(crate) struct MainLoop {
     outcoming_tx: Sender<Event>,
     stop_rx: Receiver<()>,
     store: Store,
-    ws: Connection,
+    ws: WebSocket,
     connectivity_rx: Receiver<bool>,
 }
 
@@ -17,9 +22,9 @@ impl MainLoop {
         incoming_rx: Receiver<Clip>,
         outcoming_tx: Sender<Event>,
         stop_rx: Receiver<()>,
-        config: Config,
+        config: &'static Config,
     ) -> Self {
-        let (ws, connectivity_rx) = Connection::new(config);
+        let (ws, connectivity_rx) = WebSocket::new(config);
         Self {
             incoming_rx,
             outcoming_tx,
@@ -84,7 +89,7 @@ impl MainLoop {
     }
 }
 
-fn spawn_ws_task(mut ws: Connection) -> (Sender<Clip>, Receiver<Clip>) {
+fn spawn_ws_task(mut ws: WebSocket) -> (Sender<Clip>, Receiver<Clip>) {
     let (incoming_tx, mut incoming_rx) = channel::<Clip>(255);
     let (outcoming_tx, outcoming_rx) = channel::<Clip>(255);
 
@@ -100,19 +105,41 @@ fn spawn_ws_task(mut ws: Connection) -> (Sender<Clip>, Receiver<Clip>) {
                     }
                 }
 
-                clip = ws.next() => {
-                    match clip {
-                        Ok(clip) => {
+                message = ws.next() => {
+                    let Some(message) = message else {
+                        log::error!("WS Connection is closed, bug?");
+                        break;
+                    };
+                    match message {
+                        WebSocketEvent::StartedConnecting => {
+                            log::warn!("[ws] started connecting");
+                        },
+                        WebSocketEvent::Disconnected => {
+                            log::warn!("[ws] disconnected");
+                        },
+                        WebSocketEvent::Connected => {
+                            log::warn!("[ws] connected");
+                        },
+                        WebSocketEvent::StartedSleeping(err) => {
+                            log::warn!("[ws] started sleeping, {err:?}");
+                        }
+                        WebSocketEvent::FinishedSleeping => {
+                            log::warn!("[ws] finished sleeping");
+                        }
+                        WebSocketEvent::Ping => {
+                            log::info!("[ws] received ping");
+                        }
+                        WebSocketEvent::Pong => {
+                            log::info!("[ws] received pong");
+                        }
+                        WebSocketEvent::Clip(clip) => {
                             if outcoming_tx.send(clip).await.is_err() {
                                 log::error!("[ws] failed to send clip back, stopping...");
                                 break;
                             }
                         }
-
-                        Err(err) => {
-                            log::error!("[ws] error during ws communication, stopping...");
-                            log::error!("{err:?}");
-                            break;
+                        WebSocketEvent::MessageError(err) => {
+                            log::error!("[ws] error during ws communication: {err:?}");
                         }
                     }
                 }

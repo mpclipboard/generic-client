@@ -12,14 +12,14 @@ use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, Message, WebSoc
 use crate::Config;
 
 pin_project! {
-    pub(crate) struct WebsocketWithSsl {
+    pub(crate) struct WebSocketWithSsl {
         #[pin]
         ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
     }
 }
 
-impl WebsocketWithSsl {
-    pub(crate) async fn new(config: &Config) -> Result<Self> {
+impl WebSocketWithSsl {
+    pub(crate) async fn new(config: &'static Config) -> Result<Self> {
         let uri = http::Uri::try_from(&config.url).context("invalid url")?;
         let is_wss = uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
         let connector = if is_wss {
@@ -81,7 +81,7 @@ pub(crate) fn init_tls_connector() -> Result<()> {
     Ok(())
 }
 
-impl Stream for WebsocketWithSsl {
+impl Stream for WebSocketWithSsl {
     type Item = Result<Message>;
 
     fn poll_next(
@@ -89,7 +89,7 @@ impl Stream for WebsocketWithSsl {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
         let message = ready!(self.project().ws.poll_next(cx))
-            .map(|message| message.context("got an error from Websocket stream"));
+            .map(|message| message.context("got an error from WebSocket stream"));
         std::task::Poll::Ready(message)
     }
 }

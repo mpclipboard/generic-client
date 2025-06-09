@@ -9,7 +9,6 @@ use mpclipboard_common::Clip;
 use tokio::sync::mpsc::channel;
 
 mod config;
-mod connection;
 mod event;
 mod incoming_tx;
 mod main_loop;
@@ -62,6 +61,8 @@ pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
+    let config: &'static Config = Box::leak(Box::new(config));
+
     if let Err(err) = crate::websocket::init_tls_connector() {
         log::error!("failed to init WS connector");
         log::error!("{err:?}");

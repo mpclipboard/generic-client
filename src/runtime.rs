@@ -8,7 +8,11 @@ pub(crate) struct Runtime;
 static mut STOP_TX: Option<Sender<()>> = None;
 
 impl Runtime {
-    pub(crate) fn start(incoming_rx: Receiver<Clip>, outcoming_tx: Sender<Event>, config: Config) {
+    pub(crate) fn start(
+        incoming_rx: Receiver<Clip>,
+        outcoming_tx: Sender<Event>,
+        config: &'static Config,
+    ) {
         let (stop_tx, stop_rx) = channel::<()>(1);
         unsafe { STOP_TX = Some(stop_tx) };
 
