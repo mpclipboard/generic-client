@@ -1,5 +1,6 @@
 mod mapped;
 mod reconnecting;
+mod retry;
 mod with_ssl;
 
 pub(crate) use reconnecting::{Event as WebSocketEvent, ReconnectingWebSocket as WebSocket};

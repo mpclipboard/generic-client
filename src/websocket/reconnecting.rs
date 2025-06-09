@@ -1,6 +1,9 @@
 use crate::{
     config::Config,
-    websocket::mapped::{MappedEvent as InnerEvent, MappedWebSocket as InnerWebSocket},
+    websocket::{
+        mapped::{MappedEvent as InnerEvent, MappedWebSocket as InnerWebSocket},
+        retry::Retry,
+    },
 };
 use anyhow::Result;
 use futures_util::{FutureExt, Stream, StreamExt as _, ready};
@@ -23,7 +26,7 @@ pin_project! {
 
 enum State {
     Connected {
-        ws: InnerWebSocket,
+        ws: Box<InnerWebSocket>,
     },
     ReadyToConnect {
         retry: Retry,
@@ -36,30 +39,6 @@ enum State {
         fut: Pin<Box<Sleep>>,
         retry: Retry,
     },
-}
-
-#[derive(Clone, Copy)]
-struct Retry {
-    attempts_count: u64,
-}
-impl Retry {
-    fn starting() -> Self {
-        Self { attempts_count: 0 }
-    }
-
-    fn track(&mut self) {
-        self.attempts_count += 1
-    }
-
-    fn delay(&self) -> u64 {
-        const MAX_DELAY: u64 = 30;
-        let delay = 2_u64.pow(self.attempts_count as u32).clamp(0, MAX_DELAY);
-        log::warn!(
-            "[retry] attempts = {}, delay = {delay}",
-            self.attempts_count
-        );
-        delay
-    }
 }
 
 impl ReconnectingWebSocket {
@@ -139,21 +118,21 @@ impl Stream for ReconnectingWebSocket {
                 let fut = Box::pin(InnerWebSocket::new(this.config));
                 retry.track();
                 this.state.set(State::Connecting { fut, retry });
-                return Ready(Some(StartedConnecting));
+                Ready(Some(StartedConnecting))
             }
             State::Connecting { fut, retry } => {
                 let retry = *retry;
                 let ws = ready!(fut.poll_unpin(cx));
                 match ws {
                     Ok(ws) => {
-                        this.state.set(State::Connected { ws });
-                        return Ready(Some(Connected));
+                        this.state.set(State::Connected { ws: Box::new(ws) });
+                        Ready(Some(Connected))
                     }
                     Err(err) => {
                         let delay = retry.delay();
                         let timer = Box::pin(sleep(Duration::from_secs(delay)));
                         this.state.set(State::Sleeping { fut: timer, retry });
-                        return Ready(Some(StartedSleeping(err)));
+                        Ready(Some(StartedSleeping(err)))
                     }
                 }
             }
@@ -161,7 +140,6 @@ impl Stream for ReconnectingWebSocket {
                 let retry = *retry;
                 ready!(fut.poll_unpin(cx));
                 this.state.set(State::ReadyToConnect { retry });
-
                 Ready(Some(FinishedSleeping))
             }
         }

@@ -28,8 +28,14 @@ impl Config {
         Ok(config)
     }
 
-    pub(crate) fn from_ptr(ptr: *mut Config) -> Self {
-        unsafe { *Box::from_raw(ptr) }
+    pub(crate) fn from_ptr(ptr: *mut Config) -> &'static Config {
+        match unsafe { ptr.as_ref() } {
+            Some(config) => config,
+            None => {
+                log::error!("NULL config provider, exiting...");
+                std::process::exit(1);
+            }
+        }
     }
 }
 
