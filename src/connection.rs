@@ -1,9 +1,12 @@
-use crate::{config::Config, websocket::WebSocket};
+use crate::{
+    config::Config,
+    websocket::{WebSocket, WebsocketMessage},
+};
 use anyhow::{Context as _, Result};
+use futures_util::StreamExt as _;
 use mpclipboard_common::Clip;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio_websockets::Message;
 
 pub struct Connection {
     config: Config,
@@ -75,20 +78,21 @@ impl Connection {
                 }
             };
 
-            match Clip::try_from(&message) {
-                Ok(clip) => return Ok(clip),
-                Err(err) => {
-                    log::error!("communication error: {err:?}");
-                    self.reconnect().await?;
-                    continue;
+            match message {
+                WebsocketMessage::Ping => {
+                    log::info!("received ping");
                 }
+                WebsocketMessage::Pong => {
+                    log::info!("received pong");
+                }
+                WebsocketMessage::Clip(clip) => return Ok(clip),
             };
         }
     }
 
     pub(crate) async fn send(&mut self, clip: Clip) {
         if let Some(ws) = self.ws.as_mut() {
-            ws.send(Message::from(&clip)).await
+            ws.send_clip(&clip).await
         } else {
             log::error!("failed to send message to ws server (not connected)")
         }

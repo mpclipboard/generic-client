@@ -1,5 +1,5 @@
 use anyhow::{Context as _, Result, anyhow};
-use futures_util::{SinkExt as _, Stream, StreamExt as _};
+use futures_util::{SinkExt as _, Stream, ready};
 use http::{HeaderName, HeaderValue};
 use pin_project_lite::pin_project;
 use rustls::ClientConfig;
@@ -61,10 +61,6 @@ impl WebsocketWithSsl {
             log::error!("failed to send message over WS: {err:?}");
         }
     }
-
-    pub(crate) async fn next(&mut self) -> Option<Result<Message, tokio_websockets::Error>> {
-        self.ws.next().await
-    }
 }
 
 static TLS_CONNECTOR: OnceCell<TlsConnector> = OnceCell::const_new();
@@ -92,7 +88,7 @@ impl Stream for WebsocketWithSsl {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        let message = futures_util::ready!(self.project().ws.poll_next(cx))
+        let message = ready!(self.project().ws.poll_next(cx))
             .map(|message| message.context("got an error from Websocket stream"));
         std::task::Poll::Ready(message)
     }
