@@ -8,7 +8,7 @@ use mpclipboard_common::Clip;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
-pub struct Connection {
+pub(crate) struct Connection {
     config: Config,
     ws: Option<WebSocket>,
     connectivity_tx: Sender<bool>,

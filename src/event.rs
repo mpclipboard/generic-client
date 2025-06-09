@@ -1,6 +1,6 @@
 use mpclipboard_common::Clip;
 
-pub enum Event {
+pub(crate) enum Event {
     ConnectivityChanged(bool),
     NewClip(Clip),
 }
