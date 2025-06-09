@@ -1,12 +1,11 @@
 use anyhow::anyhow;
-use mpclipboard_common::{AuthResponse, Clip};
+use mpclipboard_common::Clip;
 use tokio_websockets::Message;
 
 pub(crate) enum WebsocketMessage {
     Ping,
     Pong,
     Clip(Clip),
-    AuthResponse(AuthResponse),
 }
 
 impl TryFrom<&Message> for WebsocketMessage {
@@ -19,8 +18,6 @@ impl TryFrom<&Message> for WebsocketMessage {
             Ok(WebsocketMessage::Pong)
         } else if let Ok(clip) = Clip::try_from(message) {
             Ok(WebsocketMessage::Clip(clip))
-        } else if let Ok(auth_response) = AuthResponse::try_from(message) {
-            Ok(WebsocketMessage::AuthResponse(auth_response))
         } else {
             Err(anyhow!("unknown message type: {message:?}"))
         }

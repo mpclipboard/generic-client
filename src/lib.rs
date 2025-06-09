@@ -63,6 +63,11 @@ pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
+    if let Err(err) = crate::websocket::init_tls_connector() {
+        log::error!("failed to init WS connector");
+        log::error!("{err:?}");
+        std::process::exit(1);
+    }
     let (incoming_tx, incoming_rx) = channel::<Clip>(256);
     let (outcoming_tx, outcoming_rx) = channel::<Event>(256);
 

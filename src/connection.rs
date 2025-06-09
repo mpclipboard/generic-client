@@ -1,4 +1,4 @@
-use crate::{config::Config, websocket::with_ssl::WebsocketWithSsl};
+use crate::{config::Config, websocket::WebSocket};
 use anyhow::{Context as _, Result};
 use mpclipboard_common::Clip;
 use std::time::Duration;
@@ -7,7 +7,7 @@ use tokio_websockets::Message;
 
 pub struct Connection {
     config: Config,
-    ws: Option<WebsocketWithSsl>,
+    ws: Option<WebSocket>,
     connectivity_tx: Sender<bool>,
 }
 
@@ -23,8 +23,7 @@ impl Connection {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        let ws =
-            WebsocketWithSsl::new(&self.config.url, &self.config.token, &self.config.name).await?;
+        let ws = WebSocket::new(&self.config).await?;
         self.ws = Some(ws);
         self.connectivity_tx
             .send(true)
