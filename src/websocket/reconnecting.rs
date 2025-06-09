@@ -10,15 +10,11 @@ use futures_util::{FutureExt, Stream, StreamExt as _, ready};
 use mpclipboard_common::Clip;
 use pin_project_lite::pin_project;
 use std::{pin::Pin, time::Duration};
-use tokio::{
-    sync::mpsc::{Receiver, Sender, channel},
-    time::{Sleep, sleep},
-};
+use tokio::time::{Sleep, sleep};
 
 pin_project! {
     pub(crate) struct ReconnectingWebSocket {
         config: &'static Config,
-        tx: Sender<bool>,
         #[pin]
         state: State
     }
@@ -42,17 +38,13 @@ enum State {
 }
 
 impl ReconnectingWebSocket {
-    pub(crate) fn new(config: &'static Config) -> (Self, Receiver<bool>) {
-        let (tx, rx) = channel::<bool>(256);
-
-        let this = Self {
+    pub(crate) fn new(config: &'static Config) -> Self {
+        Self {
             config,
             state: State::ReadyToConnect {
                 retry: Retry::starting(),
             },
-            tx,
-        };
-        (this, rx)
+        }
     }
 
     pub(crate) async fn send(&mut self, clip: Clip) {

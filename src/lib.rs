@@ -3,16 +3,15 @@
 pub use crate::config::{
     Config, mpclipboard_config_new, mpclipboard_config_read_from_xdg_config_dir,
 };
-use crate::{event::Event, incoming_tx::IncomingTx, outcoming_rx::OutcomingRx, thread::Thread};
+use crate::{command::Command, event::Event, thread::Thread};
 use anyhow::{Context, Result};
 use mpclipboard_common::Clip;
 use tokio::sync::mpsc::channel;
 
+mod command;
 mod config;
 mod event;
-mod incoming_tx;
 mod main_loop;
-mod outcoming_rx;
 mod runtime;
 mod thread;
 mod websocket;
@@ -69,13 +68,13 @@ pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
 pub extern "C" fn mpclipboard_start_thread(config: *mut Config) {
     let config = Config::from_ptr(config);
 
-    let (incoming_tx, incoming_rx) = channel::<Clip>(256);
-    let (outcoming_tx, outcoming_rx) = channel::<Event>(256);
+    let (ctx, crx) = channel::<Command>(256);
+    let (etx, erx) = channel::<Event>(256);
 
-    Thread::start(incoming_rx, outcoming_tx, config);
+    Thread::start(crx, etx, config);
 
-    IncomingTx::set(incoming_tx);
-    OutcomingRx::set(outcoming_rx);
+    Command::set_sender(ctx);
+    Event::set_receiver(erx);
 }
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_stop_thread() -> bool {
@@ -91,7 +90,7 @@ pub extern "C" fn mpclipboard_send(text: *const u8) {
             .to_str()
             .context("text passed to mpclipboard_clip_new must be NULL-terminated")?;
         let clip = Clip::new(text);
-        IncomingTx::blocking_send(clip)?;
+        Command::NewClip(clip).send()?;
         Ok(())
     }
 
@@ -109,7 +108,7 @@ pub struct Output {
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_poll() -> Output {
     fn poll() -> Result<Output> {
-        let (clip, connectivity) = OutcomingRx::recv_squashed()?;
+        let (clip, connectivity) = Event::recv_squashed()?;
 
         let text = clip
             .map(|clip| clip.text)

@@ -1,6 +1,5 @@
-use crate::{Config, event::Event, main_loop::MainLoop};
+use crate::{Command, Config, event::Event, main_loop::MainLoop};
 use anyhow::{Context as _, Result, anyhow};
-use mpclipboard_common::Clip;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 
 pub(crate) struct Runtime;
@@ -9,8 +8,8 @@ static mut STOP_TX: Option<Sender<()>> = None;
 
 impl Runtime {
     pub(crate) fn start(
-        incoming_rx: Receiver<Clip>,
-        outcoming_tx: Sender<Event>,
+        commands: Receiver<Command>,
+        events: Sender<Event>,
         config: &'static Config,
     ) {
         let (stop_tx, stop_rx) = channel::<()>(1);
@@ -25,7 +24,7 @@ impl Runtime {
             });
 
         rt.block_on(async move {
-            let main_loop = MainLoop::new(incoming_rx, outcoming_tx, stop_rx, config);
+            let mut main_loop = MainLoop::new(commands, events, stop_rx, config);
             if let Err(err) = main_loop.start().await {
                 log::error!("main loop error, stopping...");
                 log::error!("{err:?}")

@@ -1,6 +1,5 @@
-use crate::{Config, event::Event, runtime::Runtime};
+use crate::{Command, Config, event::Event, runtime::Runtime};
 use anyhow::{Context as _, Result, anyhow};
-use mpclipboard_common::Clip;
 use std::{sync::Mutex, thread::JoinHandle};
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -9,12 +8,12 @@ static THREAD: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
 
 impl Thread {
     pub(crate) fn start(
-        incoming_rx: Receiver<Clip>,
-        outcoming_tx: Sender<Event>,
+        commands: Receiver<Command>,
+        events: Sender<Event>,
         config: &'static Config,
     ) {
         let handle = std::thread::spawn(move || {
-            Runtime::start(incoming_rx, outcoming_tx, config);
+            Runtime::start(commands, events, config);
         });
 
         let mut global = THREAD.lock().expect("lock is poisoned");

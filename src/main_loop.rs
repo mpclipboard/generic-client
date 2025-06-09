@@ -1,151 +1,120 @@
 use crate::{
     Config,
+    command::Command,
     event::Event,
     websocket::{WebSocket, WebSocketEvent},
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use futures_util::StreamExt as _;
-use mpclipboard_common::{Clip, Store};
-use tokio::sync::mpsc::{Receiver, Sender, channel};
+use mpclipboard_common::Store;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 pub(crate) struct MainLoop {
-    incoming_rx: Receiver<Clip>,
-    outcoming_tx: Sender<Event>,
-    stop_rx: Receiver<()>,
+    commands: Receiver<Command>,
+    events: Sender<Event>,
+    exit: Receiver<()>,
     store: Store,
     ws: WebSocket,
-    connectivity_rx: Receiver<bool>,
 }
 
 impl MainLoop {
     pub(crate) fn new(
-        incoming_rx: Receiver<Clip>,
-        outcoming_tx: Sender<Event>,
-        stop_rx: Receiver<()>,
+        commands: Receiver<Command>,
+        events: Sender<Event>,
+        exit: Receiver<()>,
         config: &'static Config,
     ) -> Self {
-        let (ws, connectivity_rx) = WebSocket::new(config);
         Self {
-            incoming_rx,
-            outcoming_tx,
-            stop_rx,
+            commands,
+            events,
+            exit,
             store: Store::new(),
-            ws,
-            connectivity_rx,
+            ws: WebSocket::new(config),
         }
     }
 
-    pub(crate) async fn start(self) -> Result<()> {
-        let Self {
-            mut incoming_rx,
-            outcoming_tx,
-            mut stop_rx,
-            mut store,
-            ws,
-            mut connectivity_rx,
-        } = self;
-
-        let (ws_tx, mut ws_rx) = spawn_ws_task(ws);
-
+    pub(crate) async fn start(&mut self) -> Result<()> {
         loop {
             tokio::select! {
-                _ = stop_rx.recv() => {
+                _ = self.exit.recv() => {
                     log::info!("received exit signal, stopping...");
                     break
                 },
 
-                clip = incoming_rx.recv() => {
-                    let clip = clip.context("channel of incoming messages is closed")?;
-                    if store.add(&clip) {
-                        log::info!("new clip from local keyboard: {clip:?}");
-                        if ws_tx.send(clip).await.is_err() {
-                            log::error!("channel of messages from tokio to ws is closed");
-                        }
-                    }
+                command = self.commands.recv() => {
+                    let Some(command) = command else {
+                        bail!("channel of commands is closed");
+                    };
+                    self.on_command(command).await?;
                 }
 
-                clip = ws_rx.recv() => {
-                    let clip = clip.context("channel of ws clips is closed")?;
-                    if store.add(&clip) {
-                        log::info!("new clip from ws: {clip:?}");
-                        outcoming_tx
-                            .send(Event::NewClip(clip))
-                            .await
-                            .map_err(|_| anyhow!("failed to send clip to main thread"))?;
-                    }
-                }
-
-                connectivity = connectivity_rx.recv() => {
-                    let connectivity = connectivity.context("connectivity channel is closed")?;
-                    outcoming_tx
-                        .send(Event::ConnectivityChanged(connectivity))
-                        .await
-                        .map_err(|_| anyhow!("failed to report connectivity"))?;
+                ws_event = self.ws.next() => {
+                    let Some(ws_event) = ws_event else {
+                        bail!("ws channel is closed. bug?");
+                    };
+                    self.on_ws_event(ws_event).await?;
                 }
             }
         }
 
         Ok(())
     }
-}
 
-fn spawn_ws_task(mut ws: WebSocket) -> (Sender<Clip>, Receiver<Clip>) {
-    let (incoming_tx, mut incoming_rx) = channel::<Clip>(255);
-    let (outcoming_tx, outcoming_rx) = channel::<Clip>(255);
-
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                clip = incoming_rx.recv() => {
-                    if let Some(clip) = clip {
-                        ws.send(clip).await;
-                    } else {
-                        log::error!("[ws] failed to read clip for sending, stopping...");
-                        break;
-                    }
-                }
-
-                message = ws.next() => {
-                    let Some(message) = message else {
-                        log::error!("WS Connection is closed, bug?");
-                        break;
-                    };
-                    match message {
-                        WebSocketEvent::StartedConnecting => {
-                            log::warn!("[ws] started connecting");
-                        },
-                        WebSocketEvent::Disconnected => {
-                            log::warn!("[ws] disconnected");
-                        },
-                        WebSocketEvent::Connected => {
-                            log::warn!("[ws] connected");
-                        },
-                        WebSocketEvent::StartedSleeping(err) => {
-                            log::warn!("[ws] started sleeping, {err:?}");
-                        }
-                        WebSocketEvent::FinishedSleeping => {
-                            log::warn!("[ws] finished sleeping");
-                        }
-                        WebSocketEvent::Ping => {
-                            log::info!("[ws] received ping");
-                        }
-                        WebSocketEvent::Pong => {
-                            log::info!("[ws] received pong");
-                        }
-                        WebSocketEvent::Clip(clip) => {
-                            if outcoming_tx.send(clip).await.is_err() {
-                                log::error!("[ws] failed to send clip back, stopping...");
-                                break;
-                            }
-                        }
-                        WebSocketEvent::MessageError(err) => {
-                            log::error!("[ws] error during ws communication: {err:?}");
-                        }
-                    }
+    async fn on_command(&mut self, command: Command) -> Result<()> {
+        match command {
+            Command::NewClip(clip) => {
+                if self.store.add(&clip) {
+                    log::info!("new clip from local keyboard: {clip:?}");
+                    self.ws.send(clip).await;
                 }
             }
         }
-    });
+        Ok(())
+    }
 
-    (incoming_tx, outcoming_rx)
+    async fn send_event(&mut self, event: Event) -> Result<()> {
+        self.events
+            .send(event)
+            .await
+            .map_err(|_| anyhow!("[ws] failed to send event, channel is closed"))
+    }
+
+    async fn on_ws_event(&mut self, ws_event: WebSocketEvent) -> Result<()> {
+        match ws_event {
+            WebSocketEvent::StartedConnecting => {
+                log::warn!("[ws] started connecting");
+            }
+            WebSocketEvent::Disconnected => {
+                log::warn!("[ws] disconnected");
+                self.send_event(Event::ConnectivityChanged(false)).await?;
+            }
+            WebSocketEvent::Connected => {
+                log::warn!("[ws] connected");
+                self.send_event(Event::ConnectivityChanged(true)).await?;
+            }
+            WebSocketEvent::StartedSleeping(err) => {
+                log::warn!("[ws] started sleeping, {err:?}");
+            }
+            WebSocketEvent::FinishedSleeping => {
+                log::warn!("[ws] finished sleeping");
+            }
+            WebSocketEvent::Ping => {
+                log::info!("[ws] received ping");
+            }
+            WebSocketEvent::Pong => {
+                log::info!("[ws] received pong");
+            }
+            WebSocketEvent::Clip(clip) => {
+                if self.store.add(&clip) {
+                    log::info!("new clip from ws: {clip:?}");
+                    self.send_event(Event::NewClip(clip)).await?;
+                }
+            }
+            WebSocketEvent::MessageError(err) => {
+                log::error!("[ws] error during ws communication: {err:?}");
+            }
+        }
+
+        Ok(())
+    }
 }
