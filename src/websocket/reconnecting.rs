@@ -47,11 +47,25 @@ impl ReconnectingWebSocket {
         }
     }
 
-    pub(crate) async fn send(&mut self, clip: Clip) {
+    pub(crate) async fn send_clip(&mut self, clip: Clip) {
         if let State::Connected { ws } = &mut self.state {
             ws.send_clip(&clip).await
         } else {
             log::error!("failed to send message to ws server (not connected)")
+        }
+    }
+
+    pub(crate) async fn send_ping(&mut self) {
+        if let State::Connected { ws } = &mut self.state {
+            ws.send_ping().await
+        } else {
+            log::error!("failed to send ping to ws server (not connected)")
+        }
+    }
+
+    pub(crate) fn reset_connection(&mut self) {
+        self.state = State::ReadyToConnect {
+            retry: Retry::starting(),
         }
     }
 }
