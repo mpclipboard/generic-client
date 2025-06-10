@@ -12,9 +12,16 @@ static EVENTS_RECEIVER: OnceCell<Mutex<Receiver<Event>>> = OnceCell::const_new()
 
 impl Event {
     pub(crate) fn set_receiver(receiver: Receiver<Event>) {
-        if EVENTS_RECEIVER.set(Mutex::new(receiver)).is_err() {
-            log::error!("Event::set_receiver must be called exactly once");
-            std::process::exit(1);
+        match EVENTS_RECEIVER.get() {
+            Some(global) => {
+                let mut global = global.lock().expect("lock is poisoned");
+                *global = receiver;
+            }
+            None => {
+                EVENTS_RECEIVER
+                    .set(Mutex::new(receiver))
+                    .expect("we just checked that EVENTS_RECEIVER is None");
+            }
         }
     }
 
