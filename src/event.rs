@@ -3,7 +3,8 @@ use mpclipboard_common::Clip;
 use std::sync::Mutex;
 use tokio::sync::{OnceCell, mpsc::Receiver};
 
-pub(crate) enum Event {
+#[derive(Debug)]
+pub enum Event {
     ConnectivityChanged(bool),
     NewClip(Clip),
 }

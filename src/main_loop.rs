@@ -13,7 +13,7 @@ use tokio::{
     time::{Instant, Interval, interval},
 };
 
-pub(crate) struct MainLoop {
+pub struct MainLoop {
     commands: Receiver<Command>,
     events: Sender<Event>,
     exit: Receiver<()>,
@@ -26,7 +26,7 @@ pub(crate) struct MainLoop {
 }
 
 impl MainLoop {
-    pub(crate) fn new(
+    pub fn new(
         commands: Receiver<Command>,
         events: Sender<Event>,
         exit: Receiver<()>,
@@ -45,7 +45,7 @@ impl MainLoop {
         }
     }
 
-    pub(crate) async fn start(&mut self) -> Result<()> {
+    pub async fn start(&mut self) -> Result<()> {
         loop {
             tokio::select! {
                 _ = self.exit.recv() => {

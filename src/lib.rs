@@ -1,9 +1,12 @@
-#![allow(static_mut_refs)]
+#![expect(static_mut_refs)]
 
-pub use crate::config::{
-    Config, mpclipboard_config_new, mpclipboard_config_read_from_xdg_config_dir,
+use crate::thread::Thread;
+pub use crate::{
+    command::Command,
+    config::{Config, mpclipboard_config_new, mpclipboard_config_read_from_xdg_config_dir},
+    event::Event,
+    main_loop::MainLoop,
 };
-use crate::{command::Command, event::Event, thread::Thread};
 use anyhow::{Context, Result};
 use mpclipboard_common::Clip;
 use tokio::sync::mpsc::channel;

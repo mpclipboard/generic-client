@@ -1,10 +1,9 @@
-use std::sync::Mutex;
-
 use anyhow::{Context as _, Result};
 use mpclipboard_common::Clip;
+use std::sync::Mutex;
 use tokio::sync::{OnceCell, mpsc::Sender};
 
-pub(crate) enum Command {
+pub enum Command {
     NewClip(Clip),
 }
 
