@@ -1,202 +1,117 @@
 use crate::{
     Config,
-    command::Command,
+    connection::{Connection, ConnectionEvent},
     event::Event,
-    websocket::{WebSocket, WebSocketEvent},
 };
-use anyhow::{Result, anyhow, bail};
-use futures_util::StreamExt as _;
-use mpclipboard_common::Store;
+use crate::{clip::Clip, store::Store};
 use std::time::Duration;
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::{Instant, Interval, interval},
 };
+use tokio_util::sync::CancellationToken;
 
 pub(crate) struct MainLoop {
-    commands: Receiver<Command>,
+    clips_to_send: Receiver<Clip>,
     events: Sender<Event>,
-    exit: Receiver<()>,
+    token: CancellationToken,
     store: Store,
-    ws: WebSocket,
+    conn: Connection,
 
     timer: Interval,
-    schedule: Schedule,
-    last_communication_at: Instant,
+    reconnect_at: Instant,
 }
 
 impl MainLoop {
     pub(crate) fn new(
-        commands: Receiver<Command>,
+        clips_to_send: Receiver<Clip>,
         events: Sender<Event>,
-        exit: Receiver<()>,
         config: &'static Config,
+        token: CancellationToken,
     ) -> Self {
         Self {
-            commands,
+            clips_to_send,
             events,
-            exit,
+            token,
             store: Store::new(),
-            ws: WebSocket::new(config),
+            conn: Connection::new(config),
 
             timer: interval(Duration::from_secs(1)),
-            schedule: Schedule::new(),
-            last_communication_at: Instant::now(),
+            reconnect_at: fifteen_secs_from_now(),
         }
     }
 
-    pub(crate) async fn start(&mut self) -> Result<()> {
+    pub(crate) async fn start(&mut self) {
         loop {
             tokio::select! {
-                _ = self.exit.recv() => {
+                _ = self.token.cancelled() => {
                     log::info!("received exit signal, stopping...");
-                    break
+                    break;
                 },
 
-                command = self.commands.recv() => {
-                    let Some(command) = command else {
-                        bail!("channel of commands is closed");
-                    };
-                    self.on_command(command).await?;
+                Some(clip_to_send) = self.clips_to_send.recv() => {
+                    self.send_clip(clip_to_send).await;
                 }
 
-                ws_event = self.ws.next() => {
-                    let Some(ws_event) = ws_event else {
-                        bail!("ws channel is closed. bug?");
-                    };
-                    self.on_ws_event(ws_event).await?;
+                event = self.conn.recv() => {
+                    self.process_event(event).await;
                 }
 
                 _ = self.timer.tick() => {
-                    self.tick().await?;
+                    self.tick().await;
                 }
             }
         }
-
-        Ok(())
     }
 
-    async fn on_command(&mut self, command: Command) -> Result<()> {
-        match command {
-            Command::NewClip(clip) => {
-                if self.store.add(&clip) {
-                    log::info!("new clip from local keyboard: {clip:?}");
-                    self.ws.send_clip(clip).await;
-                }
+    async fn send_clip(&mut self, clip: Clip) {
+        if self.store.add(&clip) {
+            log::info!("new clip from local keyboard: {clip:?}");
+            if let Err(err) = self.conn.send(&clip).await {
+                log::error!("{err:?}");
             }
         }
-        Ok(())
     }
 
-    async fn send_event(&mut self, event: Event) -> Result<()> {
-        self.events
-            .send(event)
-            .await
-            .map_err(|_| anyhow!("[ws] failed to send event, channel is closed"))
+    async fn send_event(&mut self, event: Event) {
+        if self.events.send(event).await.is_err() {
+            log::error!("[ws] failed to send event: channel is closed");
+        }
     }
 
-    async fn on_ws_event(&mut self, ws_event: WebSocketEvent) -> Result<()> {
-        match ws_event {
-            WebSocketEvent::StartedConnecting => {
-                log::warn!("[ws] started connecting");
+    async fn process_event(&mut self, event: ConnectionEvent) {
+        match event {
+            ConnectionEvent::Connecting => {}
+            ConnectionEvent::SendingAuthRequest => {}
+            ConnectionEvent::WaitingForAuthResponse => {}
+            ConnectionEvent::Connected => {
+                self.send_event(Event::ConnectivityChanged(true)).await;
             }
-            WebSocketEvent::Disconnected => {
-                log::warn!("[ws] disconnected");
-                self.send_event(Event::ConnectivityChanged(false)).await?;
+            ConnectionEvent::Disconnected => {
+                self.send_event(Event::ConnectivityChanged(false)).await;
             }
-            WebSocketEvent::Connected => {
-                log::warn!("[ws] connected");
-                self.send_event(Event::ConnectivityChanged(true)).await?;
-                self.last_communication_at = Instant::now();
+            ConnectionEvent::AuthFailed => {}
+            ConnectionEvent::ReceivedPing => {
+                self.reconnect_at = fifteen_secs_from_now();
             }
-            WebSocketEvent::StartedSleeping(err) => {
-                log::warn!("[ws] started sleeping, {err:?}");
-            }
-            WebSocketEvent::FinishedSleeping => {
-                log::warn!("[ws] finished sleeping");
-            }
-            WebSocketEvent::Ping => {
-                log::info!("[ws] received ping");
-                self.last_communication_at = Instant::now();
-            }
-            WebSocketEvent::Pong => {
-                log::info!("[ws] received pong");
-                self.last_communication_at = Instant::now();
-            }
-            WebSocketEvent::Clip(clip) => {
+            ConnectionEvent::ReceivedClip(clip) => {
                 if self.store.add(&clip) {
                     log::info!("new clip from ws: {clip:?}");
-                    self.send_event(Event::NewClip(clip)).await?;
+                    self.send_event(Event::NewClip(clip)).await;
                 }
-                self.last_communication_at = Instant::now();
-            }
-            WebSocketEvent::MessageError(err) => {
-                log::error!("[ws] error during ws communication: {err:?}");
-                self.last_communication_at = Instant::now();
             }
         }
-
-        Ok(())
     }
 
-    async fn tick(&mut self) -> Result<()> {
-        self.schedule.tick();
-
-        if self.schedule.do_ping() {
-            self.ws.send_ping().await;
+    async fn tick(&mut self) {
+        if self.reconnect_at < Instant::now() {
+            self.reconnect_at = fifteen_secs_from_now();
+            self.conn.disconnect();
+            self.send_event(Event::ConnectivityChanged(false)).await;
         }
-        if self.schedule.do_offline_check() {
-            self.do_offline_check().await?;
-        }
-        Ok(())
-    }
-
-    async fn do_offline_check(&mut self) -> Result<()> {
-        log::info!("doing offline check");
-        let delta = Instant::now() - self.last_communication_at;
-        const OFFLINE_AFTER: Duration = Duration::from_secs(15);
-        if delta > OFFLINE_AFTER {
-            log::error!("offline for {}s, resetting connection", delta.as_secs());
-            self.ws.reset_connection();
-            self.send_event(Event::ConnectivityChanged(false)).await?;
-        }
-        Ok(())
     }
 }
 
-struct Schedule {
-    tick: u64,
-}
-impl Schedule {
-    fn new() -> Self {
-        Self { tick: 0 }
-    }
-
-    fn tick(&mut self) {
-        self.tick = (self.tick + 1) % Self::CYCLE;
-    }
-
-    const PING_EVERY: u64 = 5;
-    fn do_ping(&self) -> bool {
-        self.tick % Self::PING_EVERY == 0
-    }
-
-    const OFFLINE_CHECK_EVERY: u64 = 15;
-    fn do_offline_check(&self) -> bool {
-        self.tick % Self::OFFLINE_CHECK_EVERY == 0
-    }
-
-    const CYCLE: u64 = lcm(Self::PING_EVERY, Self::OFFLINE_CHECK_EVERY);
-}
-
-const fn gcd(mut a: u64, mut b: u64) -> u64 {
-    while b != 0 {
-        let t = b;
-        b = a % b;
-        a = t;
-    }
-    a
-}
-const fn lcm(a: u64, b: u64) -> u64 {
-    a * b / gcd(a, b)
+fn fifteen_secs_from_now() -> Instant {
+    Instant::now() + Duration::from_secs(15)
 }

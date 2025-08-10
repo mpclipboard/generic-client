@@ -1,22 +1,25 @@
 use anyhow::{Result, bail};
 use mpclipboard_generic_client::{
-    Output, mpclipboard_config_read_from_xdg_config_dir, mpclipboard_poll, mpclipboard_send,
-    mpclipboard_setup, mpclipboard_start_thread, mpclipboard_stop_thread,
+    ConfigReadOption, Handle, Output, mpclipboard_config_read, mpclipboard_init, mpclipboard_poll,
+    mpclipboard_send, mpclipboard_start_thread, mpclipboard_stop_thread,
 };
 use std::io::BufRead as _;
 
 fn main() -> Result<()> {
-    mpclipboard_setup();
+    mpclipboard_init();
 
-    let config = mpclipboard_config_read_from_xdg_config_dir();
+    let config = mpclipboard_config_read(ConfigReadOption::FromLocalFile);
     if config.is_null() {
         bail!("config is NULL");
     }
-    mpclipboard_start_thread(config);
+    let handle = mpclipboard_start_thread(config);
 
-    std::thread::spawn(|| {
+    let sync_handle = SyncHandle::new(handle);
+
+    std::thread::spawn(move || {
+        let handle = sync_handle.unwrap();
         loop {
-            let Output { text, connectivity } = mpclipboard_poll();
+            let Output { text, connectivity } = mpclipboard_poll(handle);
             if !text.is_null() {
                 let text = unsafe { std::ffi::CString::from_raw(text.cast()) };
                 let text = text.to_str().unwrap().to_string();
@@ -38,7 +41,7 @@ fn main() -> Result<()> {
                     break;
                 }
                 let input = std::ffi::CString::new(input).unwrap();
-                mpclipboard_send(input.as_ptr().cast());
+                mpclipboard_send(handle, input.as_ptr().cast());
             }
             Err(err) => {
                 log::error!("Error reading from console: {}", err);
@@ -47,7 +50,17 @@ fn main() -> Result<()> {
         }
     }
 
-    mpclipboard_stop_thread();
+    mpclipboard_stop_thread(handle);
 
     Ok(())
+}
+
+struct SyncHandle(usize);
+impl SyncHandle {
+    fn new(handle: *mut Handle) -> Self {
+        Self(handle as usize)
+    }
+    fn unwrap(self) -> *mut Handle {
+        self.0 as *mut Handle
+    }
 }

@@ -6,11 +6,13 @@ no_includes = true
 sys_includes = ["stdint.h", "stdbool.h"]
 
 [enum]
-prefix_with_name = true
+rename_variants = "QualifiedScreamingSnakeCase"
 
 [export.rename]
 "Config" = "mpclipboard_config_t"
 "Output" = "mpclipboard_output_t"
+"Handle" = "mpclipboard_handle_t"
+"ConfigReadOption" = "mpclipboard_config_read_option_t"
 
 [export]
 exclude = ["mpclipboard_setup_rustls_on_jvm"]

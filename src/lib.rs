@@ -1,146 +1,54 @@
-#![allow(static_mut_refs)]
-
 pub use crate::config::{
-    Config, mpclipboard_config_new, mpclipboard_config_read_from_xdg_config_dir,
+    Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read,
 };
-use crate::{command::Command, event::Event, thread::Thread};
-use anyhow::{Context, Result};
-use mpclipboard_common::Clip;
+use crate::{clip::Clip, event::Event, thread::Thread};
+pub use handle::{Handle, Output, mpclipboard_poll, mpclipboard_send};
+use tls::TLS;
 use tokio::sync::mpsc::channel;
 
-mod command;
+mod clip;
 mod config;
+mod connection;
 mod event;
+mod handle;
+mod logger;
 mod main_loop;
-mod runtime;
+mod store;
 mod thread;
-mod websocket;
+mod tls;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_setup() {
-    #[cfg(target_os = "android")]
-    {
-        use android_logger::Config;
-        use log::LevelFilter;
-
-        android_logger::init_once(
-            Config::default()
-                .with_tag("RUST")
-                .with_max_level(LevelFilter::Trace),
-        );
-    }
-
-    #[cfg(not(target_os = "android"))]
-    pretty_env_logger::init();
-
-    log::info!("info example");
-    log::error!("error example");
-
-    if let Err(err) = crate::websocket::init_tls_connector() {
-        log::error!("failed to init WS connector");
-        log::error!("{err:?}");
-        std::process::exit(1);
-    }
-    log::info!("TLS Connector has been configured");
+pub extern "C" fn mpclipboard_init() -> bool {
+    logger::init();
+    TLS::init()
 }
 
-#[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
-    env: *mut jni::sys::JNIEnv,
-    context: jni::sys::jobject,
-) {
-    let mut env = match unsafe { jni::JNIEnv::from_raw(env) } {
-        Ok(env) => env,
-        Err(err) => {
-            log::error!("JNIEnv::from_raw failed: {:?}", err);
-            return;
-        }
+pub extern "C" fn mpclipboard_start_thread(config: *mut Config) -> *mut Handle {
+    let Some(config) = Config::from_ptr(config) else {
+        log::error!("no config provided");
+        return std::ptr::null_mut();
     };
-    let context = unsafe { jni::objects::JObject::from_raw(context) };
 
-    if let Err(err) = rustls_platform_verifier::android::init_hosted(&mut env, context) {
-        log::error!("Failed to instantiate rustls_platform_verifier: {err:?}");
-    }
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_start_thread(config: *mut Config) {
-    let config = Config::from_ptr(config);
-
-    let (ctx, crx) = channel::<Command>(256);
+    let (ctx, crx) = channel::<Clip>(256);
     let (etx, erx) = channel::<Event>(256);
 
-    Thread::start(crx, etx, config);
+    let thread = Thread::spawn(crx, etx, config);
 
-    Command::set_sender(ctx);
-    Event::set_receiver(erx);
-}
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_stop_thread() -> bool {
-    Thread::stop()
-        .inspect_err(|err| log::error!("{err:?}"))
-        .is_ok()
+    Box::leak(Box::new(Handle { ctx, erx, thread }))
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_send(text: *const u8) {
-    fn send(text: *const u8) -> Result<()> {
-        let text = unsafe { std::ffi::CStr::from_ptr(text.cast()) }
-            .to_str()
-            .context("text passed to mpclipboard_clip_new must be NULL-terminated")?;
-        let clip = Clip::new(text);
-        Command::NewClip(clip).send()?;
-        Ok(())
-    }
+pub extern "C" fn mpclipboard_stop_thread(handle: *mut Handle) -> bool {
+    let Some(handle) = Handle::owned_from_ptr(handle) else {
+        log::error!("NULL handle");
+        return false;
+    };
 
-    if let Err(err) = send(text) {
+    if let Err(err) = handle.thread.stop() {
         log::error!("{err:?}");
-    }
-}
-
-#[repr(C)]
-pub struct Output {
-    pub text: *mut u8,
-    pub connectivity: *mut bool,
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_poll() -> Output {
-    fn poll() -> Result<Output> {
-        let (clip, connectivity) = Event::recv_squashed()?;
-
-        let text = clip
-            .map(|clip| clip.text)
-            .map(string_to_bytes)
-            .unwrap_or(std::ptr::null_mut());
-        let connectivity = connectivity
-            .map(Box::new)
-            .map(|c| Box::leak(c) as *mut _)
-            .unwrap_or(std::ptr::null_mut());
-
-        Ok(Output { text, connectivity })
-    }
-
-    poll()
-        .inspect_err(|err| log::error!("{err:?}"))
-        .unwrap_or(Output {
-            text: std::ptr::null_mut(),
-            connectivity: std::ptr::null_mut(),
-        })
-}
-
-fn string_to_bytes(s: String) -> *mut u8 {
-    match std::ffi::CString::new(s) {
-        Ok(text) => {
-            let mut bytes = text.into_bytes_with_nul();
-            let ptr = bytes.as_mut_ptr();
-            std::mem::forget(bytes);
-            ptr
-        }
-        Err(_) => {
-            log::error!("clip text is NULL terminated");
-            std::ptr::null_mut()
-        }
+        false
+    } else {
+        true
     }
 }
