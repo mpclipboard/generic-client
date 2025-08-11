@@ -2,12 +2,12 @@ use crate::{Output, clip::Clip, event::Event};
 use anyhow::Result;
 use anyhow::anyhow;
 use std::{ffi::c_int, io::PipeReader, os::fd::AsRawFd, thread::JoinHandle};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
 pub struct Handle {
-    pub(crate) ctx: Sender<Clip>,
-    pub(crate) erx: Receiver<Event>,
+    pub(crate) ctx: UnboundedSender<Clip>,
+    pub(crate) erx: UnboundedReceiver<Event>,
     pub(crate) token: CancellationToken,
     pub(crate) handle: JoinHandle<()>,
     pub(crate) pipe_reader: Option<PipeReader>,
@@ -16,7 +16,7 @@ pub struct Handle {
 impl Handle {
     pub fn send(&self, text: &str) -> Result<()> {
         self.ctx
-            .blocking_send(Clip::new(text))
+            .send(Clip::new(text))
             .map_err(|_| anyhow!("failed to send command: channel is closed"))
     }
 

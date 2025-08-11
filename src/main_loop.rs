@@ -9,14 +9,14 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::mpsc::{Receiver, Sender},
+    sync::mpsc::{UnboundedReceiver, UnboundedSender},
     time::{Instant, Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
 
 pub(crate) struct MainLoop {
-    clips_to_send: Receiver<Clip>,
-    events: Sender<Event>,
+    crx: UnboundedReceiver<Clip>,
+    etx: UnboundedSender<Event>,
     token: CancellationToken,
     store: Store,
     conn: Connection,
@@ -28,15 +28,15 @@ pub(crate) struct MainLoop {
 
 impl MainLoop {
     pub(crate) fn new(
-        clips_to_send: Receiver<Clip>,
-        events: Sender<Event>,
+        crx: UnboundedReceiver<Clip>,
+        etx: UnboundedSender<Event>,
         config: Config,
         token: CancellationToken,
         pipe_writer: PipeWriter,
     ) -> Self {
         Self {
-            clips_to_send,
-            events,
+            crx,
+            etx,
             token,
             store: Store::new(),
             conn: Connection::new(config),
@@ -55,7 +55,7 @@ impl MainLoop {
                     break;
                 },
 
-                Some(clip_to_send) = self.clips_to_send.recv() => {
+                Some(clip_to_send) = self.crx.recv() => {
                     self.send_clip(clip_to_send).await;
                 }
 
@@ -80,7 +80,7 @@ impl MainLoop {
     }
 
     async fn send_event(&mut self, event: Event) {
-        if self.events.send(event).await.is_err() {
+        if self.etx.send(event).is_err() {
             log::error!("[ws] failed to send event: channel is closed");
         }
         if let Err(err) = self.pipe_writer.write(b"1") {

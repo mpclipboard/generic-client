@@ -1,14 +1,14 @@
 use crate::{Config, Handle, clip::Clip, event::Event, main_loop::MainLoop};
 use anyhow::{Context as _, Result};
-use tokio::sync::mpsc::channel;
+use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 
 pub struct Thread;
 
 impl Thread {
     pub fn start(config: Config) -> Result<Handle> {
-        let (ctx, crx) = channel::<Clip>(256);
-        let (etx, erx) = channel::<Event>(256);
+        let (ctx, crx) = unbounded_channel::<Clip>();
+        let (etx, erx) = unbounded_channel::<Event>();
         let token = CancellationToken::new();
         let (pipe_reader, pipe_writer) = std::io::pipe().context("failed to create io pipe")?;
 
