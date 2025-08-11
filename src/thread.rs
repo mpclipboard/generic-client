@@ -44,8 +44,11 @@ impl Thread {
     }
 }
 
+/// # Safety
+///
+/// `config` must be a valid pointer to Config
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_thread_start(config: *mut Config) -> *mut Handle {
+pub unsafe extern "C" fn mpclipboard_thread_start(config: *mut Config) -> *mut Handle {
     let config = unsafe { Box::from_raw(config) };
     let handle = match Thread::start(*config) {
         Ok(handle) => handle,

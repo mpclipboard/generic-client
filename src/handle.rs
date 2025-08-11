@@ -14,13 +14,13 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn send(&mut self, text: &str) -> Result<()> {
+    pub fn send(&self, text: &str) -> Result<()> {
         self.ctx
             .blocking_send(Clip::new(text))
             .map_err(|_| anyhow!("failed to send command: channel is closed"))
     }
 
-    pub fn recv(&mut self) -> Result<(Option<Clip>, Option<bool>)> {
+    pub fn recv(&mut self) -> (Option<Clip>, Option<bool>) {
         let mut clip = None;
         let mut connectivity = None;
 
@@ -31,7 +31,7 @@ impl Handle {
             }
         }
 
-        Ok((clip, connectivity))
+        (clip, connectivity)
     }
 
     pub fn stop(self) -> Result<()> {
@@ -47,12 +47,16 @@ impl Handle {
     }
 }
 
+/// # Safety
+///
+/// `handle` must be a valid pointer to Handle
+/// `text` must be a NULL terminated C string
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_handle_send(handle: *mut Handle, text: *const std::ffi::c_char) {
-    let Some(handle) = (unsafe { handle.as_mut() }) else {
-        log::error!("NULL handle");
-        return;
-    };
+pub unsafe extern "C" fn mpclipboard_handle_send(
+    handle: *const Handle,
+    text: *const std::ffi::c_char,
+) {
+    let handle = unsafe { &*handle };
 
     let Ok(text) = unsafe { std::ffi::CStr::from_ptr(text) }.to_str() else {
         log::error!("text is not NULL-terminated");
@@ -64,26 +68,21 @@ pub extern "C" fn mpclipboard_handle_send(handle: *mut Handle, text: *const std:
     }
 }
 
+/// # Safety
+///
+/// `handle` must be a valid pointer to Handle
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_handle_poll(handle: *mut Handle) -> Output {
-    let Some(handle) = (unsafe { handle.as_mut() }) else {
-        log::error!("handle is NULL");
-        return Output::null();
-    };
-
-    let (clip, connectivity) = match handle.recv() {
-        Ok(pair) => pair,
-        Err(err) => {
-            log::error!("{err:?}");
-            return Output::null();
-        }
-    };
-
+pub unsafe extern "C" fn mpclipboard_handle_poll(handle: *mut Handle) -> Output {
+    let handle = unsafe { &mut *handle };
+    let (clip, connectivity) = handle.recv();
     Output::new(clip, connectivity)
 }
 
+/// # Safety
+///
+/// `handle` must be a valid pointer to Handle
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
+pub unsafe extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
     let handle = unsafe { Box::from_raw(handle) };
     match handle.stop() {
         Ok(()) => true,
@@ -94,11 +93,11 @@ pub extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
     }
 }
 
+/// # Safety
+///
+/// `handle` must be a valid pointer to Handle
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_handle_get_fd(handle: *const Handle) -> c_int {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        log::error!("handle is NULL");
-        return -1;
-    };
+pub unsafe extern "C" fn mpclipboard_handle_get_fd(handle: *const Handle) -> c_int {
+    let handle = unsafe { &*handle };
     handle.fd()
 }

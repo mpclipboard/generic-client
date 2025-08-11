@@ -13,22 +13,22 @@ fn main() -> Result<()> {
     mpclipboard_tls_init();
 
     let config = mpclipboard_config_read(ConfigReadOption::FromLocalFile);
-    let handle = mpclipboard_thread_start(config);
+    let handle = unsafe { mpclipboard_thread_start(config) };
 
     let sync_handle = SyncHandle::new(handle);
 
     std::thread::spawn(move || {
         let handle = sync_handle.unwrap();
         loop {
-            let Output { clip, connectivity } = mpclipboard_handle_poll(handle);
+            let Output { clip, connectivity } = unsafe { mpclipboard_handle_poll(handle) };
             if !clip.is_null() {
                 {
-                    let text = mpclipboard_clip_get_text(clip);
+                    let text = unsafe { mpclipboard_clip_get_text(clip) };
                     let text = unsafe { std::ffi::CString::from_raw(text.cast()) };
                     let text = text.to_str().unwrap().to_string();
                     log::info!("text = {text:?}");
                 }
-                mpclipboard_clip_drop(clip);
+                unsafe { mpclipboard_clip_drop(clip) };
                 unsafe { free(clip.cast()) }
             };
             if !connectivity.is_null() {
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
                     break;
                 }
                 let input = std::ffi::CString::new(input).unwrap();
-                mpclipboard_handle_send(handle, input.as_ptr().cast());
+                unsafe { mpclipboard_handle_send(handle, input.as_ptr().cast()) };
             }
             Err(err) => {
                 log::error!("Error reading from console: {}", err);
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
         }
     }
 
-    mpclipboard_handle_stop(handle);
+    unsafe { mpclipboard_handle_stop(handle) };
 
     Ok(())
 }

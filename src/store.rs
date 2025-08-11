@@ -31,18 +31,21 @@ pub extern "C" fn mpclipboard_store_new() -> *mut Store {
     Box::into_raw(Box::new(Store::new()))
 }
 
+/// # Safety
+///
+/// `store` must be a valid pointer to Store
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_store_drop(store: *mut Store) {
+pub unsafe extern "C" fn mpclipboard_store_drop(store: *mut Store) {
     unsafe { std::ptr::drop_in_place(store) };
 }
 
+/// # Safety
+///
+/// `store` must be a valid pointer to Store
+/// `clip` must be a valid pointer to Clip
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_store_add(store: *mut Store, clip: *mut Clip) -> bool {
-    let Some(store) = (unsafe { store.as_mut() }) else {
-        log::error!("NULL store");
-        return false;
-    };
-
+pub unsafe extern "C" fn mpclipboard_store_add(store: *mut Store, clip: *mut Clip) -> bool {
+    let store = unsafe { &mut *store };
     let clip = unsafe { Box::from_raw(clip) };
     store.add(&clip)
 }

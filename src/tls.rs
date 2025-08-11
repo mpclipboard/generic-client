@@ -5,7 +5,6 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 use tokio_rustls::TlsConnector;
 
-#[expect(clippy::upper_case_acronyms)]
 pub struct TLS;
 
 static TLS_CONNECTOR: OnceCell<TlsConnector> = OnceCell::const_new();

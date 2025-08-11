@@ -27,17 +27,19 @@ impl Clip {
     }
 }
 
+/// # Safety
+///
+/// `clip` must be a valid pointer to Clip
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_clip_get_text(clip: *const Clip) -> *mut c_char {
-    let Some(clip) = (unsafe { clip.as_ref() }) else {
-        log::error!("NULL clip");
-        return std::ptr::null_mut();
-    };
-
+pub unsafe extern "C" fn mpclipboard_clip_get_text(clip: *const Clip) -> *mut c_char {
+    let clip = unsafe { &*clip };
     string_to_cstring(clip.text.clone())
 }
 
+/// # Safety
+///
+/// `clip` must be a valid pointer to Clip
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_clip_drop(clip: *mut Clip) {
+pub unsafe extern "C" fn mpclipboard_clip_drop(clip: *mut Clip) {
     unsafe { std::ptr::drop_in_place(clip) };
 }

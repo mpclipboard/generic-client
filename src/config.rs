@@ -51,21 +51,15 @@ impl Config {
     }
 }
 
-macro_rules! value_or_return_null {
-    ($value:expr) => {
-        match $value {
-            Ok(value) => value,
-            Err(err) => {
-                log::error!("{err:?}");
-                return std::ptr::null_mut();
-            }
-        }
-    };
-}
-
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_config_read(option: ConfigReadOption) -> *mut Config {
-    let config = value_or_return_null!(Config::read(option));
+    let config = match Config::read(option) {
+        Ok(config) => config,
+        Err(err) => {
+            log::error!("{err:?}");
+            return std::ptr::null_mut();
+        }
+    };
     Box::leak(Box::new(config))
 }
 
