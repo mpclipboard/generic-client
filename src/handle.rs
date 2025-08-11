@@ -22,13 +22,13 @@ impl Handle {
         }
     }
 
-    pub(crate) fn send(&mut self, text: &str) -> Result<()> {
+    pub fn send(&mut self, text: &str) -> Result<()> {
         self.ctx
             .blocking_send(Clip::new(text))
             .map_err(|_| anyhow!("failed to send command: channel is closed"))
     }
 
-    pub(crate) fn recv(&mut self) -> Result<(Option<Clip>, Option<bool>)> {
+    pub fn recv(&mut self) -> Result<(Option<Clip>, Option<bool>)> {
         let mut clip = None;
         let mut connectivity = None;
 

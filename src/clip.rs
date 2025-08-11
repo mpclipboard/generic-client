@@ -2,13 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct Clip {
-    pub(crate) text: String,
-    pub(crate) timestamp: u128,
+pub struct Clip {
+    pub text: String,
+    pub timestamp: u128,
 }
 
 impl Clip {
-    pub(crate) fn new(text: &str) -> Self {
+    pub fn new(text: &str) -> Self {
         Self {
             text: text.into(),
             timestamp: SystemTime::now()

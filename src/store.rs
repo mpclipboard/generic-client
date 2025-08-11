@@ -1,17 +1,17 @@
 use crate::clip::Clip;
 
 #[derive(Default)]
-pub(crate) struct Store {
+pub struct Store {
     clip: Option<Clip>,
 }
 
 impl Store {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self::default()
     }
 
     #[must_use]
-    pub(crate) fn add(&mut self, clip: &Clip) -> bool {
+    pub fn add(&mut self, clip: &Clip) -> bool {
         let do_update = self.clip.is_none()
             || self
                 .clip

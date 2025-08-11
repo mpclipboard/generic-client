@@ -1,8 +1,9 @@
-pub use crate::config::{
-    Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read,
-};
-use crate::{clip::Clip, event::Event, thread::Thread};
+pub use clip::Clip;
+pub use config::{Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read};
+pub use event::Event;
 pub use handle::{Handle, Output, mpclipboard_poll, mpclipboard_send};
+pub use store::Store;
+pub use thread::Thread;
 use tls::TLS;
 use tokio::sync::mpsc::channel;
 

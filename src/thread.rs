@@ -4,13 +4,13 @@ use std::thread::JoinHandle;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 
-pub(crate) struct Thread {
+pub struct Thread {
     token: CancellationToken,
     handle: JoinHandle<()>,
 }
 
 impl Thread {
-    pub(crate) fn spawn(
+    pub fn spawn(
         clips_to_send: Receiver<Clip>,
         events: Sender<Event>,
         config: &'static Config,
@@ -26,7 +26,7 @@ impl Thread {
         Self { token, handle }
     }
 
-    pub(crate) fn stop(self) -> Result<()> {
+    pub fn stop(self) -> Result<()> {
         self.token.cancel();
         self.handle
             .join()
