@@ -39,7 +39,7 @@ impl Thread {
             erx,
             token,
             handle,
-            pipe_reader,
+            pipe_reader: Some(pipe_reader),
         })
     }
 }

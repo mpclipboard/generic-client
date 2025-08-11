@@ -2,8 +2,8 @@ pub use clip::{Clip, mpclipboard_clip_drop, mpclipboard_clip_get_text};
 pub use config::{Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read};
 pub use event::Event;
 pub use handle::{
-    Handle, mpclipboard_handle_get_fd, mpclipboard_handle_poll, mpclipboard_handle_send,
-    mpclipboard_handle_stop,
+    Handle, mpclipboard_handle_poll, mpclipboard_handle_send, mpclipboard_handle_stop,
+    mpclipboard_handle_take_fd,
 };
 pub use logger::{Logger, mpclipboard_logger_init, mpclipboard_logger_test};
 pub use output::Output;

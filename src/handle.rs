@@ -10,7 +10,7 @@ pub struct Handle {
     pub(crate) erx: Receiver<Event>,
     pub(crate) token: CancellationToken,
     pub(crate) handle: JoinHandle<()>,
-    pub(crate) pipe_reader: PipeReader,
+    pub(crate) pipe_reader: Option<PipeReader>,
 }
 
 impl Handle {
@@ -42,8 +42,8 @@ impl Handle {
         Ok(())
     }
 
-    pub fn fd(&self) -> i32 {
-        self.pipe_reader.as_raw_fd()
+    pub fn pipe_reader(&mut self) -> Option<PipeReader> {
+        self.pipe_reader.take()
     }
 }
 
@@ -97,7 +97,12 @@ pub unsafe extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
 ///
 /// `handle` must be a valid pointer to Handle
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mpclipboard_handle_get_fd(handle: *const Handle) -> c_int {
-    let handle = unsafe { &*handle };
-    handle.fd()
+pub unsafe extern "C" fn mpclipboard_handle_take_fd(handle: *mut Handle) -> c_int {
+    let handle = unsafe { &mut *handle };
+    let Some(pipe_reader) = handle.pipe_reader() else {
+        return -1;
+    };
+    let fd = pipe_reader.as_raw_fd();
+    std::mem::forget(pipe_reader);
+    fd
 }
