@@ -8,27 +8,27 @@ use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, Message, WebSoc
 
 pub(crate) enum Connection {
     Connecting {
-        config: &'static Config,
+        config: Config,
         fut: BoxFuture<'static, Result<Conn, ()>>,
     },
 
     SendingAuthRequest {
-        config: &'static Config,
+        config: Config,
         fut: BoxFuture<'static, Result<Conn, ()>>,
     },
 
     WaitingForAuthResponse {
-        config: &'static Config,
+        config: Config,
         fut: BoxFuture<'static, Result<(bool, Conn), ()>>,
     },
 
     Connected {
-        config: &'static Config,
+        config: Config,
         conn: Box<Conn>,
     },
 
     Disconnected {
-        config: &'static Config,
+        config: Config,
         fut: BoxFuture<'static, ()>,
     },
 }
@@ -48,16 +48,6 @@ pub(crate) enum ConnectionEvent {
 type Conn = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 impl Connection {
-    fn config(&self) -> &'static Config {
-        match self {
-            Self::Connecting { config, .. }
-            | Self::SendingAuthRequest { config, .. }
-            | Self::WaitingForAuthResponse { config, .. }
-            | Self::Connected { config, .. }
-            | Self::Disconnected { config, .. } => config,
-        }
-    }
-
     fn conn(&mut self) -> Option<&mut Conn> {
         if let Self::Connected { conn, .. } = self {
             Some(conn.as_mut())
@@ -66,7 +56,7 @@ impl Connection {
         }
     }
 
-    pub(crate) fn new(config: &'static Config) -> Self {
+    pub(crate) fn new(config: Config) -> Self {
         connecting(config)
     }
 
@@ -74,7 +64,14 @@ impl Connection {
         if matches!(self, Self::Disconnected { .. }) {
             return;
         }
-        *self = disconnected(self.config())
+        let config = match self {
+            Self::Connecting { config, .. }
+            | Self::SendingAuthRequest { config, .. }
+            | Self::WaitingForAuthResponse { config, .. }
+            | Self::Connected { config, .. }
+            | Self::Disconnected { config, .. } => config,
+        };
+        *self = disconnected(std::mem::take(config))
     }
 
     pub(crate) async fn send(&mut self, clip: &Clip) -> Result<()> {
@@ -92,12 +89,12 @@ impl Connection {
             Self::Connecting { config, fut } => match fut.await {
                 Ok(conn) => {
                     log::info!("Connecting -> SendingAuthRequest");
-                    *self = sending_auth_request(conn, config);
+                    *self = sending_auth_request(conn, std::mem::take(config));
                     ConnectionEvent::SendingAuthRequest
                 }
                 Err(()) => {
                     log::info!("Connecting -> Disconnected");
-                    *self = disconnected(config);
+                    *self = disconnected(std::mem::take(config));
                     ConnectionEvent::Disconnected
                 }
             },
@@ -105,12 +102,12 @@ impl Connection {
             Self::SendingAuthRequest { config, fut } => match fut.await {
                 Ok(conn) => {
                     log::info!("SendingAuthRequest -> WaitingForAuthResponse");
-                    *self = waiting_for_auth_response(conn, config);
+                    *self = waiting_for_auth_response(conn, std::mem::take(config));
                     ConnectionEvent::WaitingForAuthResponse
                 }
                 Err(()) => {
                     log::info!("SendingAuthRequest -> Disconnected");
-                    *self = disconnected(config);
+                    *self = disconnected(std::mem::take(config));
                     ConnectionEvent::Disconnected
                 }
             },
@@ -119,19 +116,19 @@ impl Connection {
                 Ok((true, conn)) => {
                     log::info!("WaitingForAuthResponse -> Connected");
                     *self = Self::Connected {
-                        config,
+                        config: std::mem::take(config),
                         conn: Box::new(conn),
                     };
                     ConnectionEvent::Connected
                 }
                 Ok((false, _)) => {
                     log::info!("WaitingForAuthResponse -> Disconnected");
-                    *self = disconnected(config);
+                    *self = disconnected(std::mem::take(config));
                     ConnectionEvent::AuthFailed
                 }
                 Err(()) => {
                     log::info!("WaitingForAuthResponse -> Disconnected");
-                    *self = disconnected(config);
+                    *self = disconnected(std::mem::take(config));
                     ConnectionEvent::Disconnected
                 }
             },
@@ -141,7 +138,7 @@ impl Connection {
                 Ok(ConnectionMessage::Clip(clip)) => ConnectionEvent::ReceivedClip(clip),
                 Err(()) => {
                     log::info!("Connected -> Disconnected");
-                    *self = disconnected(config);
+                    *self = disconnected(std::mem::take(config));
                     ConnectionEvent::Disconnected
                 }
             },
@@ -149,15 +146,15 @@ impl Connection {
             Self::Disconnected { config, fut } => {
                 fut.await;
                 log::info!("Disconnected -> Connecting");
-                *self = connecting(config);
+                *self = connecting(std::mem::take(config));
                 ConnectionEvent::Connecting
             }
         }
     }
 }
 
-fn connecting(config: &'static Config) -> Connection {
-    async fn async_impl(config: &'static Config) -> Result<Conn, ()> {
+fn connecting(config: Config) -> Connection {
+    async fn async_impl(config: Config) -> Result<Conn, ()> {
         log::info!("Connecting to {}", config.uri);
         let is_wss = config.uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
         let connector = if is_wss {
@@ -188,22 +185,22 @@ fn connecting(config: &'static Config) -> Connection {
     }
 
     Connection::Connecting {
+        fut: Box::pin(async_impl(config.clone())),
         config,
-        fut: Box::pin(async_impl(config)),
     }
 }
 
-fn sending_auth_request(conn: Conn, config: &'static Config) -> Connection {
-    async fn async_impl(mut conn: Conn, config: &'static Config) -> Result<Conn, ()> {
+fn sending_auth_request(conn: Conn, config: Config) -> Connection {
+    async fn async_impl(mut conn: Conn, config: Config) -> Result<Conn, ()> {
         #[derive(Serialize, Debug)]
         pub(crate) struct Auth {
-            pub(crate) name: &'static str,
-            pub(crate) token: &'static str,
+            pub(crate) name: String,
+            pub(crate) token: String,
         }
 
         let auth = Auth {
-            name: &config.name,
-            token: &config.token,
+            name: config.name,
+            token: config.token,
         };
         let Ok(json) = serde_json::to_string(&auth) else {
             log::error!("malformed name/token");
@@ -220,12 +217,12 @@ fn sending_auth_request(conn: Conn, config: &'static Config) -> Connection {
     }
 
     Connection::SendingAuthRequest {
+        fut: Box::pin(async_impl(conn, config.clone())),
         config,
-        fut: Box::pin(async_impl(conn, config)),
     }
 }
 
-fn waiting_for_auth_response(conn: Conn, config: &'static Config) -> Connection {
+fn waiting_for_auth_response(conn: Conn, config: Config) -> Connection {
     async fn async_impl(mut conn: Conn) -> Result<(bool, Conn), ()> {
         let message = conn.next().await;
         let Some(message) = message else {
@@ -299,7 +296,7 @@ async fn read_message(conn: &mut Conn) -> Result<ConnectionMessage, ()> {
     }
 }
 
-fn disconnected(config: &'static Config) -> Connection {
+fn disconnected(config: Config) -> Connection {
     async fn async_impl() {
         sleep(Duration::from_secs(5)).await
     }

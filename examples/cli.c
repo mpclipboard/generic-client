@@ -1,54 +1,56 @@
-#include "mpclipboard-generic-client.h"
+#include "../mpclipboard-generic-client.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <pthread.h>
-#include <unistd.h>
 #include <string.h>
+#include <unistd.h>
 
-void *poll(void* data);
+void *start_polling(void *handle);
 
 int main() {
-    mpclipboard_setup();
+  mpclipboard_logger_init();
+  mpclipboard_tls_init();
 
-    mpclipboard_config_t *config = mpclipboard_config_read_from_xdg_config_dir();
-    if (!config) {
-        fprintf(stderr, "config is NULL\n");
-        return 1;
+  mpclipboard_config_t *config =
+      mpclipboard_config_read(MPCLIPBOARD_CONFIG_READ_OPTION_T_FROM_LOCAL_FILE);
+
+  mpclipboard_handle_t *handle = mpclipboard_thread_start(config);
+
+  pthread_t thread;
+  pthread_create(&thread, NULL, start_polling, handle);
+
+  size_t line_length = 100;
+  char *line = malloc(line_length);
+  while (true) {
+    getline(&line, &line_length, stdin);
+    if (strcmp(line, "exit\n") == 0) {
+      break;
     }
+    mpclipboard_handle_send(handle, line);
+  }
 
-    mpclipboard_start_thread(config);
+  mpclipboard_handle_stop(handle);
 
-    pthread_t thread;
-    pthread_create(&thread, NULL, poll, NULL);
-
-    size_t line_length = 100;
-    char *line = malloc(line_length);
-    while(true) {
-        getline(&line, &line_length, stdin);
-        if (strcmp(line, "exit\n") == 0) {
-            break;
-        }
-        mpclipboard_send(line);
-    }
-
-    mpclipboard_stop_thread();
-
-    return 0;
+  return 0;
 }
 
-void *poll(void* data) {
-    while (true) {
-        mpclipboard_output_t output = mpclipboard_poll();
-        if (output.text) {
-            printf("text = %s\n", output.text);
-            free(output.text);
-        }
-        if (output.connectivity) {
-            printf("connectivity = %s\n", output.connectivity ? "true" : "false");
-            free(output.connectivity);
-        }
-
-        usleep(100);
+void *start_polling(void *data) {
+  mpclipboard_handle_t *handle = data;
+  while (true) {
+    mpclipboard_output_t output = mpclipboard_handle_poll(handle);
+    if (output.clip) {
+      char *text = mpclipboard_clip_get_text(output.clip);
+      printf("text = %s\n", text);
+      free(text);
+      mpclipboard_clip_drop(output.clip);
+      free(output.clip);
     }
-    return NULL;
+    if (output.connectivity) {
+      printf("connectivity = %s\n", output.connectivity ? "true" : "false");
+      free(output.connectivity);
+    }
+
+    usleep(100);
+  }
+  return NULL;
 }

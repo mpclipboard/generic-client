@@ -1,7 +1,9 @@
 use anyhow::{Context as _, Result};
 use http::Uri;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
+use std::{ffi::c_char, str::FromStr};
+
+use crate::ffi::cstring_to_string;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -22,7 +24,7 @@ impl ConfigReadOption {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Config {
     #[serde(with = "http_serde::uri")]
     pub uri: Uri,
@@ -47,10 +49,6 @@ impl Config {
             std::fs::read_to_string(&path).with_context(|| format!("failed to read {path}"))?;
         toml::from_str(&content).context("invalid config format")
     }
-
-    pub(crate) fn from_ptr(ptr: *mut Config) -> Option<&'static Config> {
-        unsafe { ptr.as_ref() }
-    }
 }
 
 macro_rules! value_or_return_null {
@@ -73,14 +71,27 @@ pub extern "C" fn mpclipboard_config_read(option: ConfigReadOption) -> *mut Conf
 
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_config_new(
-    uri: *const u8,
-    token: *const u8,
-    name: *const u8,
+    uri: *const c_char,
+    token: *const c_char,
+    name: *const c_char,
 ) -> *mut Config {
-    let uri = value_or_return_null!(unsafe { std::ffi::CStr::from_ptr(uri.cast()) }.to_str());
-    let token = value_or_return_null!(unsafe { std::ffi::CStr::from_ptr(token.cast()) }.to_str());
-    let name = value_or_return_null!(unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_str());
-    let uri = value_or_return_null!(Uri::from_str(uri));
+    let Ok(uri) = cstring_to_string(uri) else {
+        log::error!("invalid uri");
+        return std::ptr::null_mut();
+    };
+    let Ok(uri) = Uri::from_str(&uri) else {
+        log::error!("uri is invalid");
+        return std::ptr::null_mut();
+    };
+    let Ok(token) = cstring_to_string(token) else {
+        log::error!("invalid token");
+        return std::ptr::null_mut();
+    };
+    let Ok(name) = cstring_to_string(name) else {
+        log::error!("invalid name");
+        return std::ptr::null_mut();
+    };
+
     Box::leak(Box::new(Config {
         uri,
         token: token.to_string(),

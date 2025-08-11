@@ -4,7 +4,10 @@ use crate::{
     event::Event,
 };
 use crate::{clip::Clip, store::Store};
-use std::time::Duration;
+use std::{
+    io::{PipeWriter, Write as _},
+    time::Duration,
+};
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::{Instant, Interval, interval},
@@ -17,6 +20,7 @@ pub(crate) struct MainLoop {
     token: CancellationToken,
     store: Store,
     conn: Connection,
+    pipe_writer: PipeWriter,
 
     timer: Interval,
     reconnect_at: Instant,
@@ -26,8 +30,9 @@ impl MainLoop {
     pub(crate) fn new(
         clips_to_send: Receiver<Clip>,
         events: Sender<Event>,
-        config: &'static Config,
+        config: Config,
         token: CancellationToken,
+        pipe_writer: PipeWriter,
     ) -> Self {
         Self {
             clips_to_send,
@@ -35,6 +40,7 @@ impl MainLoop {
             token,
             store: Store::new(),
             conn: Connection::new(config),
+            pipe_writer,
 
             timer: interval(Duration::from_secs(1)),
             reconnect_at: fifteen_secs_from_now(),
@@ -76,6 +82,9 @@ impl MainLoop {
     async fn send_event(&mut self, event: Event) {
         if self.events.send(event).await.is_err() {
             log::error!("[ws] failed to send event: channel is closed");
+        }
+        if let Err(err) = self.pipe_writer.write(b"1") {
+            log::error!("failed to trigger notification via pipe writer: {err:?}")
         }
     }
 

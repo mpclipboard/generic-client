@@ -1,27 +1,19 @@
-use crate::{clip::Clip, event::Event, thread::Thread};
+use crate::{Output, clip::Clip, event::Event};
 use anyhow::Result;
 use anyhow::anyhow;
+use std::{ffi::c_int, io::PipeReader, os::fd::AsRawFd, thread::JoinHandle};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio_util::sync::CancellationToken;
 
 pub struct Handle {
     pub(crate) ctx: Sender<Clip>,
     pub(crate) erx: Receiver<Event>,
-    pub(crate) thread: Thread,
+    pub(crate) token: CancellationToken,
+    pub(crate) handle: JoinHandle<()>,
+    pub(crate) pipe_reader: PipeReader,
 }
 
 impl Handle {
-    pub(crate) fn borrow_from_ptr(ptr: *mut Handle) -> Option<&'static mut Self> {
-        unsafe { ptr.as_mut() }
-    }
-
-    pub(crate) fn owned_from_ptr(ptr: *mut Handle) -> Option<Box<Self>> {
-        if ptr.is_null() {
-            None
-        } else {
-            Some(unsafe { Box::from_raw(ptr) })
-        }
-    }
-
     pub fn send(&mut self, text: &str) -> Result<()> {
         self.ctx
             .blocking_send(Clip::new(text))
@@ -41,18 +33,29 @@ impl Handle {
 
         Ok((clip, connectivity))
     }
+
+    pub fn stop(self) -> Result<()> {
+        self.token.cancel();
+        self.handle
+            .join()
+            .map_err(|_| anyhow!("failed to join thread (bug?)"))?;
+        Ok(())
+    }
+
+    pub fn fd(&self) -> i32 {
+        self.pipe_reader.as_raw_fd()
+    }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_send(handle: *mut Handle, text: *const u8) {
-    let Some(handle) = Handle::borrow_from_ptr(handle) else {
-        log::error!("no handle given");
+pub extern "C" fn mpclipboard_handle_send(handle: *mut Handle, text: *const std::ffi::c_char) {
+    let Some(handle) = (unsafe { handle.as_mut() }) else {
+        log::error!("NULL handle");
         return;
     };
 
-    let text = unsafe { std::ffi::CStr::from_ptr(text.cast()) };
-    let Ok(text) = text.to_str() else {
-        log::error!("text passed to mpclipboard_clip_new must be NULL-terminated");
+    let Ok(text) = unsafe { std::ffi::CStr::from_ptr(text) }.to_str() else {
+        log::error!("text is not NULL-terminated");
         return;
     };
 
@@ -61,53 +64,41 @@ pub extern "C" fn mpclipboard_send(handle: *mut Handle, text: *const u8) {
     }
 }
 
-#[repr(C)]
-pub struct Output {
-    pub text: *mut u8,
-    pub connectivity: *mut bool,
-}
-
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_poll(handle: *mut Handle) -> Output {
-    let mut output = Output {
-        text: std::ptr::null_mut(),
-        connectivity: std::ptr::null_mut(),
-    };
-
-    let Some(handle) = Handle::borrow_from_ptr(handle) else {
+pub extern "C" fn mpclipboard_handle_poll(handle: *mut Handle) -> Output {
+    let Some(handle) = (unsafe { handle.as_mut() }) else {
         log::error!("handle is NULL");
-        return output;
+        return Output::null();
     };
 
     let (clip, connectivity) = match handle.recv() {
         Ok(pair) => pair,
         Err(err) => {
             log::error!("{err:?}");
-            return output;
+            return Output::null();
         }
     };
 
-    if let Some(clip) = clip {
-        output.text = string_to_null_terminated_bytes(clip.text);
-    }
-    if let Some(connectivity) = connectivity {
-        output.connectivity = Box::leak(Box::new(connectivity));
-    }
-
-    output
+    Output::new(clip, connectivity)
 }
 
-fn string_to_null_terminated_bytes(s: String) -> *mut u8 {
-    match std::ffi::CString::new(s) {
-        Ok(text) => {
-            let mut bytes = text.into_bytes_with_nul();
-            let ptr = bytes.as_mut_ptr();
-            std::mem::forget(bytes);
-            ptr
-        }
-        Err(_) => {
-            log::error!("clip text is NULL terminated");
-            std::ptr::null_mut()
+#[unsafe(no_mangle)]
+pub extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
+    let handle = unsafe { Box::from_raw(handle) };
+    match handle.stop() {
+        Ok(()) => true,
+        Err(err) => {
+            log::error!("failed to stop thread: {err:?}");
+            false
         }
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn mpclipboard_handle_get_fd(handle: *const Handle) -> c_int {
+    let Some(handle) = (unsafe { handle.as_ref() }) else {
+        log::error!("handle is NULL");
+        return -1;
+    };
+    handle.fd()
 }

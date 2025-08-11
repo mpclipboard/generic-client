@@ -1,55 +1,25 @@
-pub use clip::Clip;
+pub use clip::{Clip, mpclipboard_clip_drop, mpclipboard_clip_get_text};
 pub use config::{Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read};
 pub use event::Event;
-pub use handle::{Handle, Output, mpclipboard_poll, mpclipboard_send};
-pub use store::Store;
-pub use thread::Thread;
-use tls::TLS;
-use tokio::sync::mpsc::channel;
+pub use handle::{
+    Handle, mpclipboard_handle_get_fd, mpclipboard_handle_poll, mpclipboard_handle_send,
+    mpclipboard_handle_stop,
+};
+pub use logger::{Logger, mpclipboard_logger_init, mpclipboard_logger_test};
+pub use output::Output;
+pub use store::{Store, mpclipboard_store_add, mpclipboard_store_drop, mpclipboard_store_new};
+pub use thread::{Thread, mpclipboard_thread_start};
+pub use tls::{TLS, mpclipboard_tls_init};
 
 mod clip;
 mod config;
 mod connection;
 mod event;
+mod ffi;
 mod handle;
 mod logger;
 mod main_loop;
+mod output;
 mod store;
 mod thread;
 mod tls;
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_init() -> bool {
-    logger::init();
-    TLS::init()
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_start_thread(config: *mut Config) -> *mut Handle {
-    let Some(config) = Config::from_ptr(config) else {
-        log::error!("no config provided");
-        return std::ptr::null_mut();
-    };
-
-    let (ctx, crx) = channel::<Clip>(256);
-    let (etx, erx) = channel::<Event>(256);
-
-    let thread = Thread::spawn(crx, etx, config);
-
-    Box::leak(Box::new(Handle { ctx, erx, thread }))
-}
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_stop_thread(handle: *mut Handle) -> bool {
-    let Some(handle) = Handle::owned_from_ptr(handle) else {
-        log::error!("NULL handle");
-        return false;
-    };
-
-    if let Err(err) = handle.thread.stop() {
-        log::error!("{err:?}");
-        false
-    } else {
-        true
-    }
-}
