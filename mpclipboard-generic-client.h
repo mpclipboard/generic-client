@@ -66,7 +66,7 @@ bool mpclipboard_handle_stop(mpclipboard_handle_t *handle);
  *
  * `handle` must be a valid pointer to Handle
  */
-int mpclipboard_handle_get_fd(const mpclipboard_handle_t *handle);
+int mpclipboard_handle_take_fd(mpclipboard_handle_t *handle);
 
 void mpclipboard_logger_init(void);
 
