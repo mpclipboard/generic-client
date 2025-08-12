@@ -46,10 +46,10 @@ pub unsafe extern "C" fn mpclipboard_store_drop(store: *mut Store) {
 /// `store` must be a valid pointer to Store
 /// `clip` must be a valid pointer to Clip
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mpclipboard_store_add_clip(store: *mut Store, clip: *mut Clip) -> bool {
+pub unsafe extern "C" fn mpclipboard_store_add_clip(store: *mut Store, clip: *const Clip) -> bool {
     let store = unsafe { &mut *store };
-    let clip = unsafe { Box::from_raw(clip) };
-    store.add(&clip)
+    let clip = unsafe { &*clip };
+    store.add(clip)
 }
 
 /// # Safety

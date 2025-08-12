@@ -87,8 +87,14 @@ void mpclipboard_store_drop(Store *store);
  * `store` must be a valid pointer to Store
  * `clip` must be a valid pointer to Clip
  */
-bool mpclipboard_store_add_clip(Store *store, Clip *clip);
+bool mpclipboard_store_add_clip(Store *store, const Clip *clip);
 
+/**
+ * # Safety
+ *
+ * `store` must be a valid pointer to Store
+ * `text` must be a NULL-terminated C String
+ */
 bool mpclipboard_store_add_text(Store *store, const char *text);
 
 /**
