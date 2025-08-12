@@ -1,4 +1,6 @@
-use crate::clip::Clip;
+use std::ffi::c_char;
+
+use crate::{clip::Clip, ffi::cstring_to_string};
 
 #[derive(Default)]
 pub struct Store {
@@ -44,8 +46,26 @@ pub unsafe extern "C" fn mpclipboard_store_drop(store: *mut Store) {
 /// `store` must be a valid pointer to Store
 /// `clip` must be a valid pointer to Clip
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn mpclipboard_store_add(store: *mut Store, clip: *mut Clip) -> bool {
+pub unsafe extern "C" fn mpclipboard_store_add_clip(store: *mut Store, clip: *mut Clip) -> bool {
     let store = unsafe { &mut *store };
     let clip = unsafe { Box::from_raw(clip) };
+    store.add(&clip)
+}
+
+/// # Safety
+///
+/// `store` must be a valid pointer to Store
+/// `text` must be a NULL-terminated C String
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mpclipboard_store_add_text(
+    store: *mut Store,
+    text: *const c_char,
+) -> bool {
+    let store = unsafe { &mut *store };
+    let Ok(text) = cstring_to_string(text) else {
+        log::error!("NULL text");
+        return false;
+    };
+    let clip = Clip::new(&text);
     store.add(&clip)
 }

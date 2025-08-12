@@ -7,7 +7,10 @@ pub use handle::{
 };
 pub use logger::{Logger, mpclipboard_logger_init, mpclipboard_logger_test};
 pub use output::Output;
-pub use store::{Store, mpclipboard_store_add, mpclipboard_store_drop, mpclipboard_store_new};
+pub use store::{
+    Store, mpclipboard_store_add_clip, mpclipboard_store_add_text, mpclipboard_store_drop,
+    mpclipboard_store_new,
+};
 pub use thread::{Thread, mpclipboard_thread_start};
 pub use tls::{TLS, mpclipboard_tls_init};
 
