@@ -25,11 +25,6 @@ impl Logger {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_logger_init() {
-    Logger::init();
-}
-
-#[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_logger_test() {
     Logger::test();
 }

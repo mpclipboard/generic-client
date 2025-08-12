@@ -8,8 +8,7 @@
 void *start_polling(void *handle);
 
 int main() {
-  mpclipboard_logger_init();
-  mpclipboard_tls_init();
+  mpclipboard_init();
 
   mpclipboard_config_t *config =
       mpclipboard_config_read(MPCLIPBOARD_CONFIG_READ_OPTION_T_FROM_LOCAL_FILE);
@@ -26,7 +25,11 @@ int main() {
     if (strcmp(line, "exit\n") == 0) {
       break;
     }
-    mpclipboard_handle_send(handle, line);
+    if (mpclipboard_handle_send(handle, line)) {
+      fprintf(stderr, "[new] %s\n", line);
+    } else {
+      fprintf(stderr, "[ignored] %s\n", line);
+    }
   }
 
   mpclipboard_handle_stop(handle);
@@ -38,12 +41,9 @@ void *start_polling(void *data) {
   mpclipboard_handle_t *handle = data;
   while (true) {
     mpclipboard_output_t output = mpclipboard_handle_poll(handle);
-    if (output.clip) {
-      char *text = mpclipboard_clip_get_text(output.clip);
-      printf("text = %s\n", text);
-      free(text);
-      mpclipboard_clip_drop(output.clip);
-      free(output.clip);
+    if (output.text) {
+      printf("text = %s\n", output.text);
+      free(output.text);
     }
     if (output.connectivity) {
       printf("connectivity = %s\n", output.connectivity ? "true" : "false");

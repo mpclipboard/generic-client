@@ -53,13 +53,3 @@ pub extern "C" fn mpclipboard_setup_rustls_on_jvm(
         log::error!("Failed to instantiate rustls_platform_verifier: {err:?}");
     }
 }
-
-#[unsafe(no_mangle)]
-pub extern "C" fn mpclipboard_tls_init() -> bool {
-    if let Err(err) = TLS::init() {
-        log::error!("failed to init WS connector: {err:?}");
-        return false;
-    }
-    log::info!("TLS Connector has been configured");
-    true
-}

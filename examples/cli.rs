@@ -1,16 +1,12 @@
 use anyhow::Result;
-use libc::free;
 use mpclipboard_generic_client::{
-    ConfigReadOption, Handle, Output, mpclipboard_clip_drop, mpclipboard_clip_get_text,
-    mpclipboard_config_read, mpclipboard_handle_poll, mpclipboard_handle_send,
-    mpclipboard_handle_stop, mpclipboard_logger_init, mpclipboard_thread_start,
-    mpclipboard_tls_init,
+    ConfigReadOption, Handle, Output, mpclipboard_config_read, mpclipboard_handle_poll,
+    mpclipboard_handle_send, mpclipboard_handle_stop, mpclipboard_init, mpclipboard_thread_start,
 };
 use std::io::BufRead as _;
 
 fn main() -> Result<()> {
-    mpclipboard_logger_init();
-    mpclipboard_tls_init();
+    mpclipboard_init();
 
     let config = mpclipboard_config_read(ConfigReadOption::FromLocalFile);
     let handle = unsafe { mpclipboard_thread_start(config) };
@@ -20,22 +16,16 @@ fn main() -> Result<()> {
     std::thread::spawn(move || {
         let handle = sync_handle.unwrap();
         loop {
-            let Output { clip, connectivity } = unsafe { mpclipboard_handle_poll(handle) };
-            if !clip.is_null() {
-                {
-                    let text = unsafe { mpclipboard_clip_get_text(clip) };
-                    let text = unsafe { std::ffi::CString::from_raw(text.cast()) };
-                    let text = text.to_str().unwrap().to_string();
-                    log::info!("text = {text:?}");
-                }
-                unsafe { mpclipboard_clip_drop(clip) };
-                unsafe { free(clip.cast()) }
+            let Output { text, connectivity } = unsafe { mpclipboard_handle_poll(handle) };
+            if !text.is_null() {
+                log::info!(
+                    "text = {:?}",
+                    unsafe { std::ffi::CStr::from_ptr(text) }.to_str()
+                );
+                unsafe { free(text.cast()) }
             };
             if !connectivity.is_null() {
-                {
-                    let connectivity = unsafe { *connectivity };
-                    log::info!("connectivity = {connectivity:?}");
-                }
+                log::info!("connectivity = {:?}", unsafe { *connectivity });
                 unsafe { free(connectivity.cast()) }
             };
             std::thread::sleep(std::time::Duration::from_millis(100));
@@ -72,4 +62,8 @@ impl SyncHandle {
     fn unwrap(self) -> *mut Handle {
         self.0 as *mut Handle
     }
+}
+
+unsafe extern "C" {
+    fn free(ptr: *mut std::ffi::c_void);
 }

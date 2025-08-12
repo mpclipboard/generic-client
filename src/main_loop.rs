@@ -9,13 +9,16 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::mpsc::{UnboundedReceiver, UnboundedSender},
+    sync::{
+        mpsc::{UnboundedReceiver, UnboundedSender},
+        oneshot::Sender,
+    },
     time::{Instant, Interval, interval},
 };
 use tokio_util::sync::CancellationToken;
 
 pub(crate) struct MainLoop {
-    crx: UnboundedReceiver<Clip>,
+    crx: UnboundedReceiver<(Clip, Sender<bool>)>,
     etx: UnboundedSender<Event>,
     token: CancellationToken,
     store: Store,
@@ -28,7 +31,7 @@ pub(crate) struct MainLoop {
 
 impl MainLoop {
     pub(crate) fn new(
-        crx: UnboundedReceiver<Clip>,
+        crx: UnboundedReceiver<(Clip, Sender<bool>)>,
         etx: UnboundedSender<Event>,
         config: Config,
         token: CancellationToken,
@@ -55,8 +58,8 @@ impl MainLoop {
                     break;
                 },
 
-                Some(clip_to_send) = self.crx.recv() => {
-                    self.send_clip(clip_to_send).await;
+                Some((clip_to_send, reply)) = self.crx.recv() => {
+                    self.send_clip(clip_to_send, reply).await;
                 }
 
                 event = self.conn.recv() => {
@@ -70,8 +73,13 @@ impl MainLoop {
         }
     }
 
-    async fn send_clip(&mut self, clip: Clip) {
-        if self.store.add(&clip) {
+    async fn send_clip(&mut self, clip: Clip, reply: Sender<bool>) {
+        let is_new = self.store.add(&clip);
+        if reply.send(is_new).is_err() {
+            log::error!("failed to send reply back: channel is closed");
+            return;
+        }
+        if is_new {
             log::info!("new clip from local keyboard: {clip:?}");
             if let Err(err) = self.conn.send(&clip).await {
                 log::error!("{err:?}");

@@ -1,4 +1,4 @@
-use crate::{Config, Handle, clip::Clip, event::Event, main_loop::MainLoop};
+use crate::{Config, Handle, main_loop::MainLoop};
 use anyhow::{Context as _, Result};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
@@ -7,8 +7,8 @@ pub struct Thread;
 
 impl Thread {
     pub fn start(config: Config) -> Result<Handle> {
-        let (ctx, crx) = unbounded_channel::<Clip>();
-        let (etx, erx) = unbounded_channel::<Event>();
+        let (ctx, crx) = unbounded_channel();
+        let (etx, erx) = unbounded_channel();
         let token = CancellationToken::new();
         let (pipe_reader, pipe_writer) = std::io::pipe().context("failed to create io pipe")?;
 
@@ -46,7 +46,7 @@ impl Thread {
 
 /// # Safety
 ///
-/// `config` must be a valid pointer to Config
+/// `config` must be a valid owned pointer to Config
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mpclipboard_thread_start(config: *mut Config) -> *mut Handle {
     let config = unsafe { Box::from_raw(config) };

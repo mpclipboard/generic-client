@@ -7,8 +7,8 @@ example-c:
     RUST_LOG=trace ./cli-c
 
 example-rs:
-    RUST_LOG=trace cargo run --example cli --features libc
+    RUST_LOG=trace cargo run --example cli
 
 valgrind:
-    cargo build --example cli --features libc
+    cargo build --example cli
     valgrind --leak-check=full target/debug/examples/cli

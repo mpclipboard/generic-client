@@ -8,32 +8,16 @@ typedef enum {
   MPCLIPBOARD_CONFIG_READ_OPTION_T_FROM_XDG_CONFIG_DIR = 1,
 } mpclipboard_config_read_option_t;
 
-typedef struct Clip Clip;
-
 typedef struct mpclipboard_config_t mpclipboard_config_t;
 
 typedef struct mpclipboard_handle_t mpclipboard_handle_t;
 
-typedef struct Store Store;
-
 typedef struct {
-  Clip *clip;
+  char *text;
   bool *connectivity;
 } mpclipboard_output_t;
 
-/**
- * # Safety
- *
- * `clip` must be a valid pointer to Clip
- */
-char *mpclipboard_clip_get_text(const Clip *clip);
-
-/**
- * # Safety
- *
- * `clip` must be a valid pointer to Clip
- */
-void mpclipboard_clip_drop(Clip *clip);
+bool mpclipboard_init(void);
 
 mpclipboard_config_t *mpclipboard_config_read(mpclipboard_config_read_option_t option);
 
@@ -45,7 +29,7 @@ mpclipboard_config_t *mpclipboard_config_new(const char *uri, const char *token,
  * `handle` must be a valid pointer to Handle
  * `text` must be a NULL terminated C string
  */
-void mpclipboard_handle_send(const mpclipboard_handle_t *handle, const char *text);
+bool mpclipboard_handle_send(const mpclipboard_handle_t *handle, const char *text);
 
 /**
  * # Safety
@@ -68,40 +52,11 @@ bool mpclipboard_handle_stop(mpclipboard_handle_t *handle);
  */
 int mpclipboard_handle_take_fd(mpclipboard_handle_t *handle);
 
-void mpclipboard_logger_init(void);
-
 void mpclipboard_logger_test(void);
 
-Store *mpclipboard_store_new(void);
-
 /**
  * # Safety
  *
- * `store` must be a valid pointer to Store
- */
-void mpclipboard_store_drop(Store *store);
-
-/**
- * # Safety
- *
- * `store` must be a valid pointer to Store
- * `clip` must be a valid pointer to Clip
- */
-bool mpclipboard_store_add_clip(Store *store, const Clip *clip);
-
-/**
- * # Safety
- *
- * `store` must be a valid pointer to Store
- * `text` must be a NULL-terminated C String
- */
-bool mpclipboard_store_add_text(Store *store, const char *text);
-
-/**
- * # Safety
- *
- * `config` must be a valid pointer to Config
+ * `config` must be a valid owned pointer to Config
  */
 mpclipboard_handle_t *mpclipboard_thread_start(mpclipboard_config_t *config);
-
-bool mpclipboard_tls_init(void);

@@ -1,12 +1,15 @@
 use crate::{Output, clip::Clip, event::Event};
-use anyhow::Result;
 use anyhow::anyhow;
+use anyhow::{Context as _, Result};
 use std::{ffi::c_int, io::PipeReader, os::fd::AsRawFd, thread::JoinHandle};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::{
+    mpsc::{UnboundedReceiver, UnboundedSender},
+    oneshot::Sender,
+};
 use tokio_util::sync::CancellationToken;
 
 pub struct Handle {
-    pub(crate) ctx: UnboundedSender<Clip>,
+    pub(crate) ctx: UnboundedSender<(Clip, Sender<bool>)>,
     pub(crate) erx: UnboundedReceiver<Event>,
     pub(crate) token: CancellationToken,
     pub(crate) handle: JoinHandle<()>,
@@ -14,24 +17,28 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn send(&self, text: &str) -> Result<()> {
+    pub fn send(&self, text: &str) -> Result<bool> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
+        let clip = Clip::new(text);
         self.ctx
-            .send(Clip::new(text))
-            .map_err(|_| anyhow!("failed to send command: channel is closed"))
+            .send((clip, tx))
+            .map_err(|_| anyhow!("failed to send command: channel is closed"))?;
+        rx.blocking_recv()
+            .context("failed to recv reply: channel is closed")
     }
 
-    pub fn recv(&mut self) -> (Option<Clip>, Option<bool>) {
-        let mut clip = None;
+    pub fn recv(&mut self) -> (Option<String>, Option<bool>) {
+        let mut text = None;
         let mut connectivity = None;
 
         while let Ok(event) = self.erx.try_recv() {
             match event {
-                Event::ConnectivityChanged(value) => connectivity = Some(value),
-                Event::NewClip(value) => clip = Some(value),
+                Event::ConnectivityChanged(connected) => connectivity = Some(connected),
+                Event::NewClip(clip) => text = Some(clip.text),
             }
         }
 
-        (clip, connectivity)
+        (text, connectivity)
     }
 
     pub fn stop(self) -> Result<()> {
@@ -55,16 +62,20 @@ impl Handle {
 pub unsafe extern "C" fn mpclipboard_handle_send(
     handle: *const Handle,
     text: *const std::ffi::c_char,
-) {
+) -> bool {
     let handle = unsafe { &*handle };
 
     let Ok(text) = unsafe { std::ffi::CStr::from_ptr(text) }.to_str() else {
         log::error!("text is not NULL-terminated");
-        return;
+        return false;
     };
 
-    if let Err(err) = handle.send(text) {
-        log::error!("{err:?}");
+    match handle.send(text) {
+        Ok(is_new) => is_new,
+        Err(err) => {
+            log::error!("{err:?}");
+            false
+        }
     }
 }
 

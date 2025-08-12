@@ -1,6 +1,6 @@
-use crate::Clip;
+use crate::clip::Clip;
 
-pub enum Event {
+pub(crate) enum Event {
     ConnectivityChanged(bool),
     NewClip(Clip),
 }

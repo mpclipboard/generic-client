@@ -614,7 +614,6 @@ dependencies = [
  "http",
  "http-serde",
  "jni",
- "libc",
  "log",
  "pretty_env_logger",
  "rustls",
