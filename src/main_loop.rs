@@ -81,9 +81,7 @@ impl MainLoop {
         }
         if is_new {
             log::info!("new clip from local keyboard: {clip:?}");
-            if let Err(err) = self.conn.send(&clip).await {
-                log::error!("{err:?}");
-            }
+            self.conn.send(clip).await;
         }
     }
 
@@ -103,6 +101,7 @@ impl MainLoop {
             ConnectionEvent::WaitingForAuthResponse => {}
             ConnectionEvent::Connected => {
                 self.send_event(Event::ConnectivityChanged(true)).await;
+                self.conn.send_pending_if_any().await;
             }
             ConnectionEvent::Disconnected => {
                 self.send_event(Event::ConnectivityChanged(false)).await;
