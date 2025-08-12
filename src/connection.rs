@@ -1,40 +1,37 @@
 use crate::{Config, clip::Clip, tls::TLS};
 use anyhow::Result;
 use futures::{SinkExt as _, StreamExt as _, future::BoxFuture};
+use http::Uri;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use tokio::{net::TcpStream, time::sleep};
 use tokio_websockets::{ClientBuilder, Connector, MaybeTlsStream, Message, WebSocketStream};
 
-pub(crate) enum Connection {
+pub(crate) struct Connection {
+    state: State,
+    config: Config,
+    pending: Option<Clip>,
+}
+
+enum State {
     Connecting {
-        config: Config,
         fut: BoxFuture<'static, Result<Conn, ()>>,
-        pending: Option<Clip>,
     },
 
     SendingAuthRequest {
-        config: Config,
         fut: BoxFuture<'static, Result<Conn, ()>>,
-        pending: Option<Clip>,
     },
 
     WaitingForAuthResponse {
-        config: Config,
         fut: BoxFuture<'static, Result<(bool, Conn), ()>>,
-        pending: Option<Clip>,
     },
 
     Connected {
-        config: Config,
         conn: Box<Conn>,
-        pending: Option<Clip>,
     },
 
     Disconnected {
-        config: Config,
         fut: BoxFuture<'static, ()>,
-        pending: Option<Clip>,
     },
 }
 
@@ -54,52 +51,41 @@ type Conn = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 impl Connection {
     pub(crate) fn new(config: Config) -> Self {
-        connecting(config, None)
+        Self {
+            state: connecting(&config.uri),
+            config,
+            pending: None,
+        }
     }
 
     pub(crate) fn disconnect(&mut self) {
-        if matches!(self, Self::Disconnected { .. }) {
+        if matches!(self.state, State::Disconnected { .. }) {
             return;
         }
-        let (config, pending) = match self {
-            Self::Connecting {
-                config, pending, ..
-            }
-            | Self::SendingAuthRequest {
-                config, pending, ..
-            }
-            | Self::WaitingForAuthResponse {
-                config, pending, ..
-            }
-            | Self::Disconnected {
-                config, pending, ..
-            } => (config, pending.take()),
-            Self::Connected { config, .. } => (config, None),
-        };
-        *self = disconnected(std::mem::take(config), pending)
+        self.state = disconnected()
     }
 
     pub(crate) async fn send(&mut self, clip: Clip) {
         let json = serde_json::to_string(&clip).expect("failed to serialize clip");
 
-        match self {
-            Connection::Connected { conn, .. } => {
+        match &mut self.state {
+            State::Connected { conn, .. } => {
                 if let Err(err) = conn.send(Message::text(json)).await {
                     log::error!("[ws] failed to send clip: {err:?}");
                 }
             }
-            Connection::Connecting { pending, .. }
-            | Connection::SendingAuthRequest { pending, .. }
-            | Connection::WaitingForAuthResponse { pending, .. }
-            | Connection::Disconnected { pending, .. } => *pending = Some(clip),
+            State::Connecting { .. }
+            | State::SendingAuthRequest { .. }
+            | State::WaitingForAuthResponse { .. }
+            | State::Disconnected { .. } => self.pending = Some(clip),
         }
     }
 
     pub(crate) async fn send_pending_if_any(&mut self) {
-        let Self::Connected { conn, pending, .. } = self else {
+        let State::Connected { conn } = &mut self.state else {
             return;
         };
-        let Some(clip) = pending else {
+        let Some(clip) = self.pending.as_mut() else {
             return;
         };
         let json = serde_json::to_string(clip).expect("failed to serialize clip");
@@ -107,106 +93,84 @@ impl Connection {
         match conn.send(Message::text(json)).await {
             Ok(()) => {
                 log::info!("[ws] pending clip has been sent");
-                *pending = None
+                self.pending = None
             }
             Err(err) => log::error!("[ws] failed to send clip: {err:?}"),
         }
     }
 
     pub(crate) async fn recv(&mut self) -> ConnectionEvent {
-        match self {
-            Self::Connecting {
-                config,
-                fut,
-                pending,
-            } => match fut.await {
+        match &mut self.state {
+            State::Connecting { fut } => match fut.await {
                 Ok(conn) => {
                     log::info!("Connecting -> SendingAuthRequest");
-                    *self = sending_auth_request(conn, std::mem::take(config), pending.take());
+                    self.state = sending_auth_request(conn, &self.config);
                     ConnectionEvent::SendingAuthRequest
                 }
                 Err(()) => {
                     log::info!("Connecting -> Disconnected");
-                    *self = disconnected(std::mem::take(config), pending.take());
+                    self.state = disconnected();
                     ConnectionEvent::Disconnected
                 }
             },
 
-            Self::SendingAuthRequest {
-                config,
-                fut,
-                pending,
-            } => match fut.await {
+            State::SendingAuthRequest { fut } => match fut.await {
                 Ok(conn) => {
                     log::info!("SendingAuthRequest -> WaitingForAuthResponse");
-                    *self = waiting_for_auth_response(conn, std::mem::take(config), pending.take());
+                    self.state = waiting_for_auth_response(conn);
                     ConnectionEvent::WaitingForAuthResponse
                 }
                 Err(()) => {
                     log::info!("SendingAuthRequest -> Disconnected");
-                    *self = disconnected(std::mem::take(config), pending.take());
+                    self.state = disconnected();
                     ConnectionEvent::Disconnected
                 }
             },
 
-            Self::WaitingForAuthResponse {
-                config,
-                fut,
-                pending,
-            } => match fut.await {
+            State::WaitingForAuthResponse { fut } => match fut.await {
                 Ok((true, conn)) => {
                     log::info!("WaitingForAuthResponse -> Connected");
-                    *self = Self::Connected {
-                        config: std::mem::take(config),
+                    self.state = State::Connected {
                         conn: Box::new(conn),
-                        pending: pending.take(),
                     };
                     ConnectionEvent::Connected
                 }
                 Ok((false, _)) => {
                     log::info!("WaitingForAuthResponse -> Disconnected");
-                    *self = disconnected(std::mem::take(config), pending.take());
+                    self.state = disconnected();
                     ConnectionEvent::AuthFailed
                 }
                 Err(()) => {
                     log::info!("WaitingForAuthResponse -> Disconnected");
-                    *self = disconnected(std::mem::take(config), pending.take());
+                    self.state = disconnected();
                     ConnectionEvent::Disconnected
                 }
             },
 
-            Self::Connected {
-                config,
-                conn,
-                pending,
-            } => match read_message(conn).await {
+            State::Connected { conn } => match read_message(conn).await {
                 Ok(ConnectionMessage::Ping) => ConnectionEvent::ReceivedPing,
                 Ok(ConnectionMessage::Clip(clip)) => ConnectionEvent::ReceivedClip(clip),
                 Err(()) => {
                     log::info!("Connected -> Disconnected");
-                    *self = disconnected(std::mem::take(config), pending.take());
+                    self.state = disconnected();
                     ConnectionEvent::Disconnected
                 }
             },
 
-            Self::Disconnected {
-                config,
-                fut,
-                pending,
-            } => {
+            State::Disconnected { fut } => {
                 fut.await;
                 log::info!("Disconnected -> Connecting");
-                *self = connecting(std::mem::take(config), pending.take());
+                self.state = connecting(&self.config.uri);
                 ConnectionEvent::Connecting
             }
         }
     }
 }
 
-fn connecting(config: Config, pending: Option<Clip>) -> Connection {
-    async fn async_impl(config: Config) -> Result<Conn, ()> {
-        log::info!("Connecting to {}", config.uri);
-        let is_wss = config.uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
+fn connecting(uri: &Uri) -> State {
+    async fn async_impl(uri: Uri) -> Result<Conn, ()> {
+        log::info!("Connecting to {uri}");
+        let is_wss = uri.scheme().map(|scheme| scheme.as_str()) == Some("wss");
         let connector = if is_wss {
             log::info!("wss protocol detected, enabling TLS");
             let connector = match TLS::get() {
@@ -222,7 +186,7 @@ fn connecting(config: Config, pending: Option<Clip>) -> Connection {
             Connector::Plain
         };
 
-        let client = ClientBuilder::from_uri(config.uri.clone()).connector(&connector);
+        let client = ClientBuilder::from_uri(uri).connector(&connector);
         let (conn, response) = match client.connect().await {
             Ok(pair) => pair,
             Err(err) => {
@@ -234,14 +198,12 @@ fn connecting(config: Config, pending: Option<Clip>) -> Connection {
         Ok(conn)
     }
 
-    Connection::Connecting {
-        fut: Box::pin(async_impl(config.clone())),
-        config,
-        pending,
+    State::Connecting {
+        fut: Box::pin(async_impl(uri.clone())),
     }
 }
 
-fn sending_auth_request(conn: Conn, config: Config, pending: Option<Clip>) -> Connection {
+fn sending_auth_request(conn: Conn, config: &Config) -> State {
     async fn async_impl(mut conn: Conn, config: Config) -> Result<Conn, ()> {
         #[derive(Serialize, Debug)]
         pub(crate) struct Auth {
@@ -267,14 +229,12 @@ fn sending_auth_request(conn: Conn, config: Config, pending: Option<Clip>) -> Co
         Ok(conn)
     }
 
-    Connection::SendingAuthRequest {
+    State::SendingAuthRequest {
         fut: Box::pin(async_impl(conn, config.clone())),
-        config,
-        pending,
     }
 }
 
-fn waiting_for_auth_response(conn: Conn, config: Config, pending: Option<Clip>) -> Connection {
+fn waiting_for_auth_response(conn: Conn) -> State {
     async fn async_impl(mut conn: Conn) -> Result<(bool, Conn), ()> {
         let message = conn.next().await;
         let Some(message) = message else {
@@ -306,10 +266,8 @@ fn waiting_for_auth_response(conn: Conn, config: Config, pending: Option<Clip>) 
         }
     }
 
-    Connection::WaitingForAuthResponse {
-        config,
+    State::WaitingForAuthResponse {
         fut: Box::pin(async_impl(conn)),
-        pending,
     }
 }
 
@@ -349,13 +307,11 @@ async fn read_message(conn: &mut Conn) -> Result<ConnectionMessage, ()> {
     }
 }
 
-fn disconnected(config: Config, pending: Option<Clip>) -> Connection {
+fn disconnected() -> State {
     async fn async_impl() {
         sleep(Duration::from_secs(5)).await
     }
-    Connection::Disconnected {
-        config,
+    State::Disconnected {
         fut: Box::pin(async_impl()),
-        pending,
     }
 }
