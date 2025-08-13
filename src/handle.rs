@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result};
 use std::{ffi::c_int, io::PipeReader, os::fd::AsRawFd, thread::JoinHandle};
 use tokio::sync::{
     mpsc::{UnboundedReceiver, UnboundedSender},
-    oneshot::Sender,
+    oneshot::{Receiver, Sender},
 };
 use tokio_util::sync::CancellationToken;
 
@@ -17,14 +17,25 @@ pub struct Handle {
 }
 
 impl Handle {
-    pub fn send(&self, text: &str) -> Result<bool> {
+    pub fn blocking_send(&self, text: &str) -> Result<bool> {
+        self.send_returning_rx(text)?
+            .blocking_recv()
+            .context("failed to recv reply: channel is closed")
+    }
+
+    pub async fn send(&self, text: &str) -> Result<bool> {
+        self.send_returning_rx(text)?
+            .await
+            .context("failed to recv reply: channel is closed")
+    }
+
+    fn send_returning_rx(&self, text: &str) -> Result<Receiver<bool>> {
         let (tx, rx) = tokio::sync::oneshot::channel::<bool>();
         let clip = Clip::new(text);
         self.ctx
             .send((clip, tx))
             .map_err(|_| anyhow!("failed to send command: channel is closed"))?;
-        rx.blocking_recv()
-            .context("failed to recv reply: channel is closed")
+        Ok(rx)
     }
 
     pub fn recv(&mut self) -> (Option<String>, Option<bool>) {
@@ -70,7 +81,7 @@ pub unsafe extern "C" fn mpclipboard_handle_send(
         return false;
     };
 
-    match handle.send(text) {
+    match handle.blocking_send(text) {
         Ok(is_new) => is_new,
         Err(err) => {
             log::error!("{err:?}");
