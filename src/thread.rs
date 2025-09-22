@@ -3,9 +3,11 @@ use anyhow::{Context as _, Result};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 
+/// Main entry point to start MPClipboard
 pub struct Thread;
 
 impl Thread {
+    /// Starts a background thread with Tokio runtime, returns a "handle" for communication and control.
     pub fn start(config: Config) -> Result<Handle> {
         let (ctx, crx) = unbounded_channel();
         let (etx, erx) = unbounded_channel();
@@ -44,6 +46,8 @@ impl Thread {
     }
 }
 
+/// Starts a background thread with Tokio runtime, returns a "handle" for communication and control.
+///
 /// # Safety
 ///
 /// `config` must be a valid owned pointer to Config

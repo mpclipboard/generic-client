@@ -1,3 +1,11 @@
+#![warn(missing_docs)]
+#![warn(trivial_casts, trivial_numeric_casts)]
+#![warn(unused_qualifications)]
+#![warn(deprecated_in_future)]
+#![warn(unused_lifetimes)]
+#![allow(clippy::boxed_local)]
+#![doc = include_str!("../README.md")]
+
 pub use config::{Config, ConfigReadOption, mpclipboard_config_new, mpclipboard_config_read};
 pub use handle::{
     Handle, mpclipboard_handle_poll, mpclipboard_handle_send, mpclipboard_handle_stop,
@@ -21,6 +29,12 @@ mod store;
 mod thread;
 mod tls;
 
+/// Initializes MPClipboard's Logger and TLS connector.
+///
+/// This is the first thing that you must do before calling any
+/// MPClipboard functions.
+///
+/// Returns `false` if TLS connector can't be initialized.
 #[unsafe(no_mangle)]
 pub extern "C" fn mpclipboard_init() -> bool {
     Logger::init();

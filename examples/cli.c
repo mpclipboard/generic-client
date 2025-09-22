@@ -46,7 +46,7 @@ void *start_polling(void *data) {
       free(output.text);
     }
     if (output.connectivity) {
-      printf("connectivity = %s\n", output.connectivity ? "true" : "false");
+      printf("connectivity = %s\n", *output.connectivity ? "true" : "false");
       free(output.connectivity);
     }
 

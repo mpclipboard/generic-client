@@ -26,7 +26,6 @@ rustls = { version = "0.23", features = ["ring"] }
 tokio-rustls = "0.26"
 http-serde = "2.1"
 tokio-util = "0.7"
-# libc = { version = "0.2", optional = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.15"
@@ -35,6 +34,5 @@ jni = { version = "0.21", default-features = false }
 [target.'cfg(not(target_os = "android"))'.dependencies]
 pretty_env_logger = { version = "0.5", default-features = false }
 
-# [[example]]
-# name = "cli"
-# required-features = ["libc"]
+[[example]]
+name = "cli"

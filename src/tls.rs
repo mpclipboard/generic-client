@@ -5,11 +5,13 @@ use std::sync::Arc;
 use tokio::sync::OnceCell;
 use tokio_rustls::TlsConnector;
 
+/// Platform-specific TLS handler
 pub struct TLS;
 
 static TLS_CONNECTOR: OnceCell<TlsConnector> = OnceCell::const_new();
 
 impl TLS {
+    /// Initializes TLS (called by `mpclipboard_init` internally)
     pub fn init() -> Result<()> {
         rustls::crypto::ring::default_provider()
             .install_default()

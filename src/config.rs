@@ -6,9 +6,13 @@ use std::{ffi::c_char, str::FromStr};
 use crate::ffi::cstring_to_string;
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
+/// Instruction for the `Config::read` function how to read the config.
 pub enum ConfigReadOption {
+    /// Read from "./config.toml", based on your current working directory
     FromLocalFile = 0,
+
+    /// Read from XDG Config dir (i.e. from `~/.config/mpclipboard/config.toml`)
     FromXdgConfigDir = 1,
 }
 
@@ -24,11 +28,19 @@ impl ConfigReadOption {
     }
 }
 
+/// Representation of a runtime configuration
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct Config {
+    /// URI of the WebSocket server
+    /// (e.g. `"ws://127.0.0.1:3000"` or `"wss://mpclipboard.me.dev"`)
     #[serde(with = "http_serde::uri")]
     pub uri: Uri,
+
+    /// Token that is used for authentication
     pub token: String,
+
+    /// Unique name of the client
+    /// (e.g. `"macos-old-laptop"` or `"linux-dusty-minipc"`)
     pub name: String,
 }
 
@@ -43,6 +55,8 @@ impl std::fmt::Debug for Config {
 }
 
 impl Config {
+    /// Reads the config based on the given instruction
+    /// (which is either "read from XDG dir" or "read from ./config.toml")
     pub fn read(option: ConfigReadOption) -> Result<Self> {
         let path = option.path();
         let content =
@@ -52,6 +66,8 @@ impl Config {
 }
 
 #[unsafe(no_mangle)]
+/// Reads the config based on the given instruction
+/// (which is either "read from XDG dir" or "read from ./config.toml")
 pub extern "C" fn mpclipboard_config_read(option: ConfigReadOption) -> *mut Config {
     let config = match Config::read(option) {
         Ok(config) => config,
@@ -64,6 +80,7 @@ pub extern "C" fn mpclipboard_config_read(option: ConfigReadOption) -> *mut Conf
 }
 
 #[unsafe(no_mangle)]
+/// Constructs the config in-place based on given parameters that match fields 1-to-1.
 pub extern "C" fn mpclipboard_config_new(
     uri: *const c_char,
     token: *const c_char,

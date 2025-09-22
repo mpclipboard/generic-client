@@ -8,6 +8,7 @@ use tokio::sync::{
 };
 use tokio_util::sync::CancellationToken;
 
+/// Representation of a "handle" for running MPClipboard
 pub struct Handle {
     pub(crate) ctx: UnboundedSender<(Clip, Sender<bool>)>,
     pub(crate) erx: UnboundedReceiver<Event>,
@@ -17,12 +18,17 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// Sends text from local clipboard, blocks until background thread receives
+    /// this text and decides whether it's a duplicate or not. Doesn't wait for delivery.
+    /// Returns `true` if given text is new (in such case it gets sent to the server).
     pub fn blocking_send(&self, text: &str) -> Result<bool> {
         self.send_returning_rx(text)?
             .blocking_recv()
             .context("failed to recv reply: channel is closed")
     }
 
+    /// Sends text from local clipboard.
+    /// Returns `true` if given text is new (in such case it gets sent to the server).
     pub async fn send(&self, text: &str) -> Result<bool> {
         self.send_returning_rx(text)?
             .await
@@ -38,6 +44,9 @@ impl Handle {
         Ok(rx)
     }
 
+    /// Polls background thread for any updates, squashes them and returns back to the caller.
+    /// Returns a pair of `new text received from the server` + `change of the connectivity`.
+    /// Both pair items can be empty (e.g. if there were no clips sent from the server)
     pub fn recv(&mut self) -> (Option<String>, Option<bool>) {
         let mut text = None;
         let mut connectivity = None;
@@ -52,6 +61,7 @@ impl Handle {
         (text, connectivity)
     }
 
+    /// Gracefully shuts down a background thread
     pub fn stop(self) -> Result<()> {
         self.token.cancel();
         self.handle
@@ -60,11 +70,22 @@ impl Handle {
         Ok(())
     }
 
+    /// Takes and returns a pipe reader that can be used to subscribe to updates
+    /// in poll/epoll -like fashion.
+    /// Every time there's an update this FD will get an update
+    /// and so you can `poll` it to know when to call `recv`.
+    ///
+    /// This way if you don't get any clips from the server you can stay in non-busy loop
+    /// and only `recv` when you know there's something to receive.
     pub fn pipe_reader(&mut self) -> Option<PipeReader> {
         self.pipe_reader.take()
     }
 }
 
+/// Sends text from local clipboard, blocks until background thread receives
+/// this text and decides whether it's a duplicate or not. Doesn't wait for delivery.
+/// Returns `true` if given text is new (in such case it gets sent to the server).
+///
 /// # Safety
 ///
 /// `handle` must be a valid pointer to Handle
@@ -90,6 +111,10 @@ pub unsafe extern "C" fn mpclipboard_handle_send(
     }
 }
 
+/// Polls background thread for any updates, squashes them and returns back to the caller.
+/// Returns a pair of `new text received from the server` + `change of the connectivity`.
+/// Both pair items can be empty (e.g. if there were no clips sent from the server)
+///
 /// # Safety
 ///
 /// `handle` must be a valid pointer to Handle
@@ -100,6 +125,8 @@ pub unsafe extern "C" fn mpclipboard_handle_poll(handle: *mut Handle) -> Output 
     Output::new(clip, connectivity)
 }
 
+/// Gracefully shuts down a background thread
+///
 /// # Safety
 ///
 /// `handle` must be a valid pointer to Handle
@@ -115,6 +142,14 @@ pub unsafe extern "C" fn mpclipboard_handle_stop(handle: *mut Handle) -> bool {
     }
 }
 
+/// Takes and returns a pipe reader that can be used to subscribe to updates
+/// in poll/epoll -like fashion.
+/// Every time there's an update this FD will get an update
+/// and so you can `poll` it to know when to call `recv`.
+///
+/// This way if you don't get any clips from the server you can stay in non-busy loop
+/// and only `recv` when you know there's something to receive.
+///
 /// # Safety
 ///
 /// `handle` must be a valid pointer to Handle

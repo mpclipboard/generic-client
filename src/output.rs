@@ -2,8 +2,12 @@ use crate::ffi::string_to_cstring;
 use std::ffi::c_char;
 
 #[repr(C)]
+#[derive(Debug)]
+/// Represents a result of polling
 pub struct Output {
+    /// Optional (NULLable) text received from the server
     pub text: *mut c_char,
+    /// Optional (NULLable) flag of the connectivity state
     pub connectivity: *mut bool,
 }
 
